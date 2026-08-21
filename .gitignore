@@ -38,6 +38,12 @@ build/
 bin/
 obj/
 out/
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+*.sln
 
 ===================================================
 기타 OS 및 에디터 캐시 (팀원 중 다른 환경 사용자를 위해)
