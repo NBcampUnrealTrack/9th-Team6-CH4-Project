@@ -1,34 +1,42 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "TOCardDeckComponent.h"
+#include "TOFormula.h"
 
-// Sets default values for this component's properties
 UTOCardDeckComponent::UTOCardDeckComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
-
-// Called when the game starts
-void UTOCardDeckComponent::BeginPlay()
+FTOFormulaData UTOCardDeckComponent::GenerateRoundFormula(int32 PlayerCount)
 {
-	Super::BeginPlay();
-
-	// ...
+	FTOFormulaData NewFormula;
+	PlayerCount = FMath::Clamp(PlayerCount, 4, 6);
+	// 라운드 데이터를 만드는 함수
+	// 플레이어 수가 4미만이면 4로, 6초과면 6으로 안전하게 범위를 고정
 	
+	// 인원수(4~6)에 맞춰 -3 ~ 3 무작위 카드 숫자 부여
+	for (int32 i = 0; i < PlayerCount; i++)
+	{
+		FTOPlayerCardData CardData;
+		CardData.PlayerIndex = i;
+		CardData.PlayerAlphabet = Alphabets[i];
+		CardData.CardValue = FMath::RandRange(-3, 3);
+
+		NewFormula.PlayerCards.Add(CardData);
+		// PlayerIndex: 0, 1, 2, 3 번호 부여
+		// PlayerAlphabet: Alphabets 배열에서 "A", "B", "C", "D" 순서대로 꺼내 부여
+		// CardValue: -3에서 3 사이의 임의의 정수 무작위 추출 후 카드 목록(NewFormula.PlayerCards)에 저장
+	}
+
+	// (인원수 - 1)개 만큼 연산자 무작위 추출
+	for (int32 i = 0; i < PlayerCount - 1; i++)
+	{
+		uint8 RandOp = FMath::RandRange(0, 2); // 0: +, 1: -, 2: *
+		NewFormula.Operators.Add(static_cast<ETOOperatorType>(RandOp));
+		//0~2 사이 숫자를 랜덤으로 뽑아 Add(+), Subtract(-), Multiply(*)로 변환 후 연산자 목록에 저장
+	}
+
+	// UI 텍스트 출력 검증용 임시 테스트 결과값 (계산식 아직 미구현)
+	NewFormula.TargetResult = 99;
+
+	return NewFormula;
 }
-
-
-// Called every frame
-void UTOCardDeckComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
-}
-
