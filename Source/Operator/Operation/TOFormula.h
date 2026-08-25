@@ -19,7 +19,7 @@ public:
 	// 연산자 Enum을 문자열("+", "-", "*")로 변환하는 헬퍼 함수
 	static FString GetOperatorString(ETOOperatorType Op);
     
-	// N개 숫자와 N-1개 연산자 계산 (* 우선 연산)
+	// N(플레이어의 수) 개 숫자와 N-1개 연산자 계산 (* 우선 연산)
 	UFUNCTION(BlueprintCallable, Category = "GameLogic|Operation")
 	static int32 EvaluateFormula(const TArray<int32>& Numbers, const TArray<ETOOperatorType>& Operators);
 
@@ -30,8 +30,5 @@ public:
 	// 단일 카드 유추 검증
 	UFUNCTION(BlueprintCallable, Category = "GameLogic|Verification")
 	static bool VerifySingleCard(const FTOFormulaData& FormulaData, const FTOGuessSingleInputData& InputData);
-
-	// 최종 순위 정렬
-	UFUNCTION(BlueprintCallable, Category = "GameLogic|Score")
-	static TArray<FTOPlayerScoreData> CalculateFinalRanks(TArray<FTOPlayerScoreData> ScoreList);
+	
 };

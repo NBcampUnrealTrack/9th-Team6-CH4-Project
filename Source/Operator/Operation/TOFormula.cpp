@@ -68,12 +68,52 @@ FString UTOFormula::GetOperatorString(ETOOperatorType Op)
 }
 
 
-//컴파일 에러 방지
-
+// A 연산자 B 연산자 C 연산자 D (연산자  E 연산자 F ) 의 계산 식 
 int32 UTOFormula::EvaluateFormula(const TArray<int32>& Numbers, const TArray<ETOOperatorType>& Operators)
 {
-    return 0;
+    if (Numbers.Num() != Operators.Num() + 1 || Numbers.Num() == 0)
+    {
+        return 0;
+    }
+
+    TArray<int32> Nums = Numbers; //플레이어 들에게 분배 된 카드의 숫자들
+    TArray<ETOOperatorType> Ops = Operators; // 무작위로 만들어진 연산자
+
+    // 곱하기(*) 우선 연산
+    for (int32 i = 0; i < Ops.Num(); )
+    {
+        if (Ops[i] == ETOOperatorType::Multiply)
+        {
+            Nums[i] = Nums[i] * Nums[i + 1];
+            Nums.RemoveAt(i + 1);
+            Ops.RemoveAt(i);
+        }
+        else
+        {
+            i++;
+        }
+    }
+
+    // 덧셈(+) 및 뺄셈(-) 순차 연산
+    int32 Result = Nums[0];
+    for (int32 i = 0; i < Ops.Num(); i++)
+    {
+        if (Ops[i] == ETOOperatorType::Add)
+        {
+            Result += Nums[i + 1];
+        }
+        else if (Ops[i] == ETOOperatorType::Subtract)
+        {
+            Result -= Nums[i + 1];
+        }
+    }
+
+    return Result;
 }
+
+
+
+//컴파일 에러 방지
 
 bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const FTOGuessAllInputData& InputData)
 {
@@ -83,9 +123,4 @@ bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const
 bool UTOFormula::VerifySingleCard(const FTOFormulaData& FormulaData, const FTOGuessSingleInputData& InputData)
 {
     return false;
-}
-
-TArray<FTOPlayerScoreData> UTOFormula::CalculateFinalRanks(TArray<FTOPlayerScoreData> ScoreList)
-{
-    return ScoreList;
 }

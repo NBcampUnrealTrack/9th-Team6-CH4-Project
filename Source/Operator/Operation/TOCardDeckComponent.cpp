@@ -13,6 +13,9 @@ FTOFormulaData UTOCardDeckComponent::GenerateRoundFormula(int32 PlayerCount)
 	// 라운드 데이터를 만드는 함수
 	// 플레이어 수가 4미만이면 4로, 6초과면 6으로 안전하게 범위를 고정
 	
+	//EvaluateFormula 연산자에 넘겨줄 카드 숫자 전용 TArray 변수 선언
+	TArray<int32> CardValues;
+	
 	// 인원수(4~6)에 맞춰 -3 ~ 3 무작위 카드 숫자 부여
 	for (int32 i = 0; i < PlayerCount; i++)
 	{
@@ -35,8 +38,8 @@ FTOFormulaData UTOCardDeckComponent::GenerateRoundFormula(int32 PlayerCount)
 		//0~2 사이 숫자를 랜덤으로 뽑아 Add(+), Subtract(-), Multiply(*)로 변환 후 연산자 목록에 저장
 	}
 
-	// UI 텍스트 출력 검증용 임시 테스트 결과값 (계산식 아직 미구현)
-	NewFormula.TargetResult = 99;
+	// UTOFormula :: EvaluateFormula 함수 호출로 결과값 대입
+	NewFormula.TargetResult = UTOFormula::EvaluateFormula(CardValues, NewFormula.Operators);
 
 	return NewFormula;
 }
