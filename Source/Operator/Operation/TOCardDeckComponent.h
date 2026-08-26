@@ -20,5 +20,5 @@ public:
 private:
 	
 	// 플레이어의 Index 에 맞게 대입 될 알파벳 배열
-	const TArray<FString> Alphabets = { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E"), TEXT("F") };
+	TArray<FString> Alphabets = { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E"), TEXT("F") };
 };

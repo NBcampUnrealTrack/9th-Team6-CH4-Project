@@ -22,12 +22,12 @@ public:
 	// N(플레이어의 수) 개 숫자와 N-1개 연산자 계산 (* 우선 연산)
 	UFUNCTION(BlueprintCallable, Category = "GameLogic|Operation")
 	static int32 EvaluateFormula(const TArray<int32>& Numbers, const TArray<ETOOperatorType>& Operators);
-
-	// 전체 정답 검증
+	
+	// 플레이어가 제출한 전체 정답 구조체(FTOGuessAllInputData)가 실제 정답과 일치하는지 검증
 	UFUNCTION(BlueprintCallable, Category = "GameLogic|Verification")
 	static bool VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const FTOGuessAllInputData& InputData);
 
-	// 단일 카드 유추 검증
+	// 단일 카드 유추 구조체(FTOGuessSingleInputData)가 실제 카드의 수치와 일치하는지 검증
 	UFUNCTION(BlueprintCallable, Category = "GameLogic|Verification")
 	static bool VerifySingleCard(const FTOFormulaData& FormulaData, const FTOGuessSingleInputData& InputData);
 	

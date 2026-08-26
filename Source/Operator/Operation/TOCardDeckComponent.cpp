@@ -4,11 +4,19 @@
 UTOCardDeckComponent::UTOCardDeckComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	// Alphabets 배열 기본값 초기화 (4~6명 플레이어용)
+	Alphabets = { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E"), TEXT("F") };
 }
 
 FTOFormulaData UTOCardDeckComponent::GenerateRoundFormula(int32 PlayerCount)
 {
 	FTOFormulaData NewFormula;
+	
+	if (Alphabets.Num() < 6)
+	{
+		Alphabets = { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E"), TEXT("F") };
+	}
+
 	PlayerCount = FMath::Clamp(PlayerCount, 4, 6);
 	// 라운드 데이터를 만드는 함수
 	// 플레이어 수가 4미만이면 4로, 6초과면 6으로 안전하게 범위를 고정
@@ -25,6 +33,7 @@ FTOFormulaData UTOCardDeckComponent::GenerateRoundFormula(int32 PlayerCount)
 		CardData.CardValue = FMath::RandRange(-3, 3);
 
 		NewFormula.PlayerCards.Add(CardData);
+		CardValues.Add(CardData.CardValue);
 		// PlayerIndex: 0, 1, 2, 3 번호 부여
 		// PlayerAlphabet: Alphabets 배열에서 "A", "B", "C", "D" 순서대로 꺼내 부여
 		// CardValue: -3에서 3 사이의 임의의 정수 무작위 추출 후 카드 목록(NewFormula.PlayerCards)에 저장
@@ -40,6 +49,37 @@ FTOFormulaData UTOCardDeckComponent::GenerateRoundFormula(int32 PlayerCount)
 
 	// UTOFormula :: EvaluateFormula 함수 호출로 결과값 대입
 	NewFormula.TargetResult = UTOFormula::EvaluateFormula(CardValues, NewFormula.Operators);
+	
+	// =========================================================
+	// [로그 출력 로직] 생성된 원본 수식 상태 확인
+	FString FormulaLogString = TEXT("");
+
+	for (int32 i = 0; i < NewFormula.PlayerCards.Num(); ++i)
+	{
+		//  카드 정보 추가
+		const FTOPlayerCardData& Card = NewFormula.PlayerCards[i];
+		FormulaLogString += FString::Printf(TEXT("%s(%d)"), *Card.PlayerAlphabet, Card.CardValue);
+
+		//  연산자 추가 (마지막 카드가 아닌 경우에만)
+		if (i < NewFormula.Operators.Num())
+		{
+			switch (NewFormula.Operators[i])
+			{
+			case ETOOperatorType::Add:      FormulaLogString += TEXT(" + "); break;
+			case ETOOperatorType::Subtract: FormulaLogString += TEXT(" - "); break;
+			case ETOOperatorType::Multiply: FormulaLogString += TEXT(" * "); break;
+			default: break;
+			}
+		}
+	}
+
+	// TargetResult 연결
+	FormulaLogString += FString::Printf(TEXT(" = %d"), NewFormula.TargetResult);
+
+	// 로그 출력
+	UE_LOG(LogTemp, Warning, TEXT("[CardDeck] 라운드 수식 생성 완료 -> %s"), *FormulaLogString);
+	// =========================================================
+	
 
 	return NewFormula;
 }

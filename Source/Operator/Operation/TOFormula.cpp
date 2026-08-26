@@ -113,14 +113,46 @@ int32 UTOFormula::EvaluateFormula(const TArray<int32>& Numbers, const TArray<ETO
 
 
 
-//컴파일 에러 방지
 
+
+// 전체 정답 검증 
 bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const FTOGuessAllInputData& InputData)
 {
-    return false;
+    // 플레이어가 입력한 정답을 구조체에 대입
+    const TMap<FString, int32>& GuessedMap = InputData.GuessedPlayerValues;
+    // 서버가 가진 카드 목록(정답)을 확인 
+    for (const FTOPlayerCardData& RealCard : FormulaData.PlayerCards)
+    {   
+        // 제출한 정답에 누락한 내용이 있을 때 (A값을 입력 안하고 제출했을 때)
+        if (!GuessedMap.Contains(RealCard.PlayerAlphabet))
+        {
+            return false;
+        }
+        // 제출한 정답에 틀린 내용이 있을 때
+        if (GuessedMap[RealCard.PlayerAlphabet] != RealCard.CardValue)
+        {
+            return false;
+        }
+    }
+
+    return true; // 모두 일치하면 정답
 }
 
+
+
+
+
+// 단일 카드 유추 검증
 bool UTOFormula::VerifySingleCard(const FTOFormulaData& FormulaData, const FTOGuessSingleInputData& InputData)
-{
+{   // 서버가 가진 카드 목록(정답)을 확인 
+    for (const FTOPlayerCardData& RealCard : FormulaData.PlayerCards)
+    {
+        // 플레이어가 제출한 알파벳이 서버의 알파벳과 일치하는지 확인
+        if (RealCard.PlayerAlphabet == InputData.TargetAlphabet)
+        {   // 알파벳(다른 플레이어의 카드)의 정답과 내가 제출한 정답과 일치하면 true, 틀리면 false
+            return RealCard.CardValue == InputData.GuessedValue;
+        }
+    }
+
     return false;
 }
