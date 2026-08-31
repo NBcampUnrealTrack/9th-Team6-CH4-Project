@@ -47,8 +47,8 @@ public:
     void SubmitPlayerGuess(ATOPlayerController* SenderController, const FTOGuessSingleInputData& SingleGuessData);
 
     // 특정 플레이어에게 전달할 UI 데이터를 가져오는 함수
-    UFUNCTION(BlueprintCallable, Category = "GameMode")
-    FTOPlayerUIData GetUIDataForPlayer(AController* TargetPlayer);
+    //UFUNCTION(BlueprintCallable, Category = "GameMode")
+    //FTOPlayerUIData GetUIDataForPlayer(AController* TargetPlayer);
 
     // 다른 플레이어의 카드 유추에 성공했을 때 호출하는 함수
     UFUNCTION(BlueprintCallable, Category = "GameMode")
@@ -65,7 +65,7 @@ protected:
 
     // 현재 라운드의 원본 수식 데이터를 서버 메모리에 저장해둘 변수 (TOTypes에 정의된 구조체 사용)
     UPROPERTY(BlueprintReadOnly, Category = "GameData")
-    FTOPlayerCardData CurrentServerCardData; // 팀원의 FTOPlayerCardData 이름에 맞춤
+    FTOFormulaData CurrentServerCardData; // 서버 전체 정답 데이터 저장소
 
     // 플레이어 (Index)별로 정답을 맞혀서 알고 있는 알파벳 목록 저장
     UPROPERTY(BlueprintReadOnly, Category = "GameData")

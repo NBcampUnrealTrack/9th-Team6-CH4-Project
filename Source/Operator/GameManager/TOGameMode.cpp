@@ -2,10 +2,9 @@
 
 
 #include "TOGameMode.h"
-#include "TOFormula.h"
-#include "TOTypes.h"
-#include "../Operation/TOCardDeckComponent.h"
 #include "../Operation/TOFormula.h"
+#include "../Operation/TOTypes.h"
+#include "../Operation/TOCardDeckComponent.h"
 #include "TOPlayerController.h"
 
 // 생성자
@@ -63,7 +62,7 @@ void ATOGameMode::SubmitPlayerGuess(ATOPlayerController* SenderController, const
     if (CurrentGamePhase != ETOGamePhase::GuessingCards) return;
 
     // 팀원이 만든 단일 카드 검증 함수 호출
-    bool bIsMatch = UTOFormula::VerifySingleCard(SingleGuessData);
+    bool bIsMatch = UTOFormula::VerifySingleCard(CurrentServerCardData, SingleGuessData);
 
     if (bIsMatch)
     {
@@ -72,15 +71,10 @@ void ATOGameMode::SubmitPlayerGuess(ATOPlayerController* SenderController, const
 }
 
 // 특정 플레이어에게 전달할 UI 데이터 반환
-FTOPlayerUIData ATOGameMode::GetUIDataForPlayer(AController* TargetPlayer)
-{
-    FTOPlayerUIData UIData;
-
-    // 팀원이 만든 UI 데이터 빌드 함수 호출
-    UIData = UTOFormula::BuildUIDataForPlayer(TargetPlayer);
-
-    return UIData;
-}
+//FTOPlayerUIData ATOGameMode::GetUIDataForPlayer(AController* TargetPlayer)
+//{
+    
+//}
 
 // 다른 플레이어의 카드 유추 성공 시 알파벳 추가
 void ATOGameMode::AddRevealedAlphabetForPlayer(int32 TargetPlayerIndex, const FString& Alphabet)
