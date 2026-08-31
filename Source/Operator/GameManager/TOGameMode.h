@@ -6,6 +6,7 @@
 #include "TOGameMode.generated.h"
 
 class UTOCardDeckComponent;
+class ATOPlayerController;
 
 // 게임 진행 페이즈 정의
 UENUM(BlueprintType)
@@ -37,17 +38,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GameMode")
     void StartNewRound(int32 PlayerCount);
 
-    // [Phase 1] 플레이어가 수식을 제출했을 때 호출 (플레이어 컨트롤러나 RPC를 통해 호출됨)
+    // [Phase 1] 플레이어가 정답(수식)을 제출했을 때 (팀원 구조체 반영)
     UFUNCTION(BlueprintCallable, Category = "GameMode|Gameplay")
-    void SubmitPlayerFormula(int32 PlayerIndex, const FString& SubmittedFormula);
+    void SubmitPlayerFormula(ATOPlayerController* SenderController, const FTOGuessAllInputData& GuessData);
 
-    // [Phase 2] 플레이어가 타인의 카드를 유추하여 제출했을 때 호출 (예: B의 카드가 2다)
+    // [Phase 2] 플레이어가 단일 카드를 유추하여 제출했을 때 (팀원 구조체 반영)
     UFUNCTION(BlueprintCallable, Category = "GameMode|Gameplay")
-    void SubmitPlayerGuess(int32 SourcePlayerIndex, int32 TargetPlayerIndex, const FString& GuessedValue);
+    void SubmitPlayerGuess(ATOPlayerController* SenderController, const FTOGuessSingleInputData& SingleGuessData);
 
     // 특정 플레이어에게 전달할 UI 데이터를 가져오는 함수
     UFUNCTION(BlueprintCallable, Category = "GameMode")
-    FTOPlayerUIData GetUIDataForPlayer(int32 TargetPlayerIndex);
+    FTOPlayerUIData GetUIDataForPlayer(AController* TargetPlayer);
 
     // 다른 플레이어의 카드 유추에 성공했을 때 호출하는 함수
     UFUNCTION(BlueprintCallable, Category = "GameMode")
@@ -62,9 +63,9 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GameData")
     ETOGamePhase CurrentGamePhase;
 
-    // 현재 라운드의 원본 수식 데이터를 서버 메모리에 저장해둘 변수
+    // 현재 라운드의 원본 수식 데이터를 서버 메모리에 저장해둘 변수 (TOTypes에 정의된 구조체 사용)
     UPROPERTY(BlueprintReadOnly, Category = "GameData")
-    FTOFormulaData CurrentFormulaData;
+    FTOPlayerCardData CurrentServerCardData; // 팀원의 FTOPlayerCardData 이름에 맞춤
 
     // 플레이어 (Index)별로 정답을 맞혀서 알고 있는 알파벳 목록 저장
     UPROPERTY(BlueprintReadOnly, Category = "GameData")
@@ -73,10 +74,6 @@ protected:
     // 플레이어별 점수판 (PlayerIndex -> Score)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GameData")
     TMap<int32, int32> PlayerScores;
-
-    // --- 멀티플레이 입력 동기화용 임시 저장소 ---
-    // 이번 턴에 각 플레이어가 제출한 수식 목록
-    TMap<int32, FString> SubmittedFormulasThisTurn;
 
 private:
     // 모든 플레이어가 수식을 다 냈는지 검사하고 다음 단계로 넘어가는 내부 함수
