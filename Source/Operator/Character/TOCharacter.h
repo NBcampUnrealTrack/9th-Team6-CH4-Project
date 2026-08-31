@@ -50,7 +50,7 @@ public:
 	// Seating State & Logic
 	// =========================================================================
 	UPROPERTY(ReplicatedUsing = OnRep_IsSeated, EditAnywhere, BlueprintReadWrite, Category = "Operator|Seating")
-	bool bIsSeated = true;
+	bool bIsSeated = false;
 
 	UFUNCTION(BlueprintCallable, Category = "Operator|Seating")
 	void SetSeatedState(bool bSeated);
