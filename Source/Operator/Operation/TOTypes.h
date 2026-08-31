@@ -92,6 +92,19 @@ struct FTOPlayerUIData
     int32 MyCardValue = 0;
 };
 
+// RPC 전송을 위한 Key-Value 쌍 구조체
+USTRUCT(BlueprintType)
+struct FTOGuessedPair
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FString Alphabet;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 GuessedValue = 0;
+};
+
 // 전체 정답 제출 시 UI에서 넘어오는 데이터 구조체
 USTRUCT(BlueprintType)
 struct FTOGuessAllInputData
@@ -102,9 +115,9 @@ struct FTOGuessAllInputData
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 SubmittingPlayerIndex = 0;
 
-    // UI에서 입력한 [알파벳, 입력값] 맵 (예: {"B": -3, "C": 2, "D": -1, "E": 3})
+    // RPC 지원을 위해 TMap 대신 TArray<FTOGuessedPair> 사용
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    TMap<FString, int32> GuessedPlayerValues;
+    TArray<FTOGuessedPair> GuessedPlayerValues;
 };
 
 // 단일 카드 유추 시 UI에서 넘어오는 데이터 구조체

@@ -118,18 +118,24 @@ int32 UTOFormula::EvaluateFormula(const TArray<int32>& Numbers, const TArray<ETO
 // 전체 정답 검증 
 bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const FTOGuessAllInputData& InputData)
 {
-    // 플레이어가 입력한 정답을 구조체에 대입
-    const TMap<FString, int32>& GuessedMap = InputData.GuessedPlayerValues;
-    // 서버가 가진 카드 목록(정답)을 확인 
+    // 서버가 가진 실제 카드 정답 순회
     for (const FTOPlayerCardData& RealCard : FormulaData.PlayerCards)
-    {   
-        // 제출한 정답에 누락한 내용이 있을 때 (A값을 입력 안하고 제출했을 때)
-        if (!GuessedMap.Contains(RealCard.PlayerAlphabet))
+    {
+        // 제출자 본인의 카드는 검증 대상에서 제외
+        if (RealCard.PlayerIndex == InputData.SubmittingPlayerIndex)
         {
-            return false;
+            continue;
         }
-        // 제출한 정답에 틀린 내용이 있을 때
-        if (GuessedMap[RealCard.PlayerAlphabet] != RealCard.CardValue)
+
+        // 제출한 TArray에서 해당 알파벳에 매칭되는 입력값 찾기
+        const FTOGuessedPair* FoundPair = InputData.GuessedPlayerValues.FindByPredicate(
+            [&RealCard](const FTOGuessedPair& Pair)
+            {
+                return Pair.Alphabet == RealCard.PlayerAlphabet;
+            });
+
+        // 해당 알파벳 입력값이 누락되었거나 숫자가 틀린 경우 실패
+        if (!FoundPair || FoundPair->GuessedValue != RealCard.CardValue)
         {
             return false;
         }
