@@ -86,10 +86,6 @@ void ATOCharacter::UpdateSeatedStateVisuals()
 		{
 			GetCharacterMovement()->SetMovementMode(MOVE_None);
 		}
-		if (GetCapsuleComponent())
-		{
-			GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		}
 		if (SitIdleMontage && GetMesh() && GetMesh()->GetAnimInstance())
 		{
 			GetMesh()->GetAnimInstance()->Montage_Play(SitIdleMontage);
@@ -100,10 +96,6 @@ void ATOCharacter::UpdateSeatedStateVisuals()
 		if (GetCharacterMovement())
 		{
 			GetCharacterMovement()->SetMovementMode(MOVE_Walking);
-		}
-		if (GetCapsuleComponent())
-		{
-			GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		}
 	}
 }
