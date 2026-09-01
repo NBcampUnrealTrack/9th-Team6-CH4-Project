@@ -26,6 +26,10 @@ class OPERATOR_API ATOGameMode : public AGameMode
 public:
     ATOGameMode();
     
+    // 플레이어 로그인/로그아웃 
+    virtual void PostLogin(APlayerController* NewPlayer) override;
+    virtual void Logout(AController* Exiting) override;
+    
     // 라운드 시작 시 호출할 함수
     UFUNCTION(BlueprintCallable, Category = "GameMode")
     void StartNewRound(int32 PlayerCount);
@@ -71,6 +75,13 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "GameData")
     TSet<int32> SubmittedPlayerIndices;
 
+    // 순차 부여할 인덱스 카운터 (0 ~ 5)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GameData")
+    int32 NextPlayerIndex = 0;
+
+    // 중간에 다른 플레이어가 나갔을 때 그 자리를 비우고, 또 다른 플레이어가 접속했을 때 재사용
+    TArray<int32> AvailableIndices;
+    
 private:
     // 모든 플레이어가 수식을 다 냈는지 검사하고 다음 단계로 넘어가는 내부 함수
     void CheckAllFormulasSubmitted();

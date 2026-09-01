@@ -6,14 +6,69 @@
 #include "../Operation/TOTypes.h"
 #include "../Operation/TOCardDeckComponent.h"
 #include "TOPlayerController.h"
+#include "TOPlayerState.h"
 
 // 생성자 (컴포넌트 생성 및 기본 페이즈 설정)
 ATOGameMode::ATOGameMode()
 {
     CardDeckComponent = CreateDefaultSubobject<UTOCardDeckComponent>(TEXT("CardDeckComponent"));
     CurrentGamePhase = ETOGamePhase::WaitingToStart;
+    
+    // 커스텀 Controller 및 PlayerState 등록
+    PlayerControllerClass = ATOPlayerController::StaticClass();
+    PlayerStateClass = ATOPlayerState::StaticClass();
 }
 
+
+// 로그인 함수
+void ATOGameMode::PostLogin(APlayerController* NewPlayer)
+{
+    Super::PostLogin(NewPlayer);
+
+    ATOPlayerController* TOPC = Cast<ATOPlayerController>(NewPlayer);
+    if (!TOPC) return;
+
+    int32 AssignedIndex = -1;
+
+    // 이탈자 재활용 인덱스가 없으면 순차 증가 (0~5)
+    if (AvailableIndices.Num() > 0)
+    {
+        AssignedIndex = AvailableIndices.Pop();
+    }
+    else
+    {
+        AssignedIndex = NextPlayerIndex++;
+    }
+
+    // Controller에 할당
+    TOPC->AssignedPlayerIndex = AssignedIndex;
+
+    // PlayerState에 할당 (모든 클라이언트에 Replication 동기화)
+    if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
+    {
+        TOPS->SetAssignedPlayerIndex(AssignedIndex);
+    }
+
+    // 풀방 됐을 때 자동시작 (참고)
+    //if (GetNumPlayers() >= 6)
+    //{
+    //    StartNewRound(6);
+    //}
+}
+
+
+// 로그아웃 함수 
+void ATOGameMode::Logout(AController* Exiting)
+{
+    Super::Logout(Exiting);
+
+    ATOPlayerController* TOPC = Cast<ATOPlayerController>(Exiting);
+    if (TOPC && TOPC->AssignedPlayerIndex != -1)
+    {
+        // 퇴장한 유저의 인덱스를 재활용 배열에 등록
+        AvailableIndices.Push(TOPC->AssignedPlayerIndex);
+    }
+}
 
 
 // 라운드 시작 함수 (알파벳 정보 초기화 및 카드덱을 통한 새 수식 생성)
