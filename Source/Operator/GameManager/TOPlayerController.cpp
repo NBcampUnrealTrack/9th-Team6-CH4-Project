@@ -2,7 +2,7 @@
 #include "TOPlayerState.h"
 #include "TOGameMode.h"
 #include "Net/UnrealNetwork.h"
-
+#include "Blueprint/UserWidget.h"
 
 ATOPlayerController::ATOPlayerController()
 {
@@ -83,5 +83,22 @@ void ATOPlayerController::Client_ReceiveGuessResult_Implementation(bool bIsCorre
 	else
 	{
 		// UI에 오답 연출 출력
+	}
+}
+
+void ATOPlayerController::ShowGameWidget()
+{
+	// 로컬 플레이어 화면에만 위젯을 띄움 (서버가 아닐 때, 혹은 로컬 컨트롤러일 때)
+	if (IsLocalController() && GameWidgetClass)
+	{
+		CurrentGameWidget = CreateWidget<UUserWidget>(this, GameWidgetClass);
+		if (CurrentGameWidget)
+		{
+			CurrentGameWidget->AddToViewport();
+            
+			// 마우스 커서 활성화 (UI 조작을 위해)
+			bShowMouseCursor = true;
+			SetInputMode(FInputModeUIOnly());
+		}
 	}
 }
