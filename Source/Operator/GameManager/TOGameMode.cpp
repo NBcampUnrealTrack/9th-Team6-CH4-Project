@@ -23,6 +23,12 @@ ATOGameMode::ATOGameMode()
 // 로그인 함수
 void ATOGameMode::PostLogin(APlayerController* NewPlayer)
 {
+    // 최대 인원 (6) 초과 접속 차단
+    if (GetNumPlayers() > 6)
+    {
+        return;
+    }
+    
     Super::PostLogin(NewPlayer);
 
     ATOPlayerController* TOPC = Cast<ATOPlayerController>(NewPlayer);
@@ -47,13 +53,9 @@ void ATOGameMode::PostLogin(APlayerController* NewPlayer)
     if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
     {
         TOPS->SetAssignedPlayerIndex(AssignedIndex);
+        TOPS->bIsReadyToPlay = false; // 기본 Unready
     }
-
-    // 풀방 됐을 때 자동시작 (참고)
-    //if (GetNumPlayers() >= 6)
-    //{
-    //    StartNewRound(6);
-    //}
+    BroadcastLobbyState();
 }
 
 
@@ -68,6 +70,7 @@ void ATOGameMode::Logout(AController* Exiting)
         // 퇴장한 유저의 인덱스를 재활용 배열에 등록
         AvailableIndices.Push(TOPC->AssignedPlayerIndex);
     }
+    BroadcastLobbyState();
 }
 
 
@@ -78,7 +81,10 @@ void ATOGameMode::StartNewRound(int32 PlayerCount)
 
     CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
 
+    bRoundHasWinner = false;
+    SubmittedPlayerIndices.Empty();
     PlayerRevealedAlphabets.Empty();
+    
     for (int32 i = 0; i < PlayerCount; i++)
     {
         FTODiscoveredCardInfo NewInfo;
@@ -94,15 +100,23 @@ void ATOGameMode::StartNewRound(int32 PlayerCount)
     CurrentServerCardData = CardDeckComponent->GenerateRoundFormula(PlayerCount);
 
     // 접속 중인 모든 플레이어 Controller에 최신 UI 데이터 브로드캐스트
-    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
     {
-        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
-        if (TOPC)
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
-            FTOPlayerUIData UIData = GetUIDataForPlayer(TOPC);
-            TOPC->Client_UpdateFormulaUI(UIData);
+            ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+            if (TOPC && TOPC->AssignedPlayerIndex == Card.PlayerIndex)
+            {
+                if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
+                {
+                    TOPS->SetPlayerAlphabet(Card.PlayerAlphabet);
+                }
+                break;
+            }
         }
     }
+    // 접속 중인 모든 플레이어 Controller에 최신 UI 데이터 브로드캐스트
+    BroadcastUIUpdate();
 }
 
 
@@ -122,11 +136,19 @@ void ATOGameMode::SubmitPlayerFormula(ATOPlayerController* SenderController, con
     bool bIsCorrect = UTOFormula::VerifyAllAnswerWithMap(CurrentServerCardData, GuessData);
     if (bIsCorrect)
     {
-        // 정답을 맞췄을 때의 처리 (점수 부여 등)
+        // 정답 시 승리 플래그 설정 및 점수 부여 후 라운드 종료
+        bRoundHasWinner = true;
+        
+        if (ATOPlayerState* TOPS = SenderController->GetPlayerState<ATOPlayerState>())
+        {
+            TOPS->AddScorePoints(1);
+        }
+
+        EndRound(SenderIndex);
+        return;
     }
 
-    // 모든 플레이어가 제출했는지 체크
-    SubmittedPlayerIndices.Add(SenderIndex);
+    // 오답 시 전원 제출 완료 여부 확인
     CheckAllFormulasSubmitted();
 }
 
@@ -203,8 +225,25 @@ void ATOGameMode::AddRevealedAlphabetForPlayer(int32 TargetPlayerIndex, const FS
     }
 }
 
+void ATOGameMode::EndRound(int32 WinnerIndex)
+{
+    CurrentGamePhase = ETOGamePhase::RoundOver;
+    SubmittedPlayerIndices.Empty();
+
+    BroadcastUIUpdate();
+
+    // 3초 후 다음 라운드 시작 (현재 접속 플레이어 수 인자로 전달)
+    FTimerHandle TimerHandle;
+    GetWorldTimerManager().SetTimer(TimerHandle, [this]()
+    {
+        StartNewRound(GetNumPlayers());
+    }, 3.0f, false);
+}
+
+// 단계 전환 및 제출 검증 함수
 void ATOGameMode::CheckAllFormulasSubmitted()
 {
+    if (bRoundHasWinner) return; // 이미 정답자가 나온 경우 무시
     int32 TotalPlayers = GetNumPlayers(); // 현재 접속 중인 플레이어 수
 
     // 모든 플레이어가 현재 페이즈의 제출/유추를 마쳤는지 확인
@@ -213,18 +252,96 @@ void ATOGameMode::CheckAllFormulasSubmitted()
         // 정답 제출을 모두 했을 때 -> 카드 유추 단계로 전환
         if (CurrentGamePhase == ETOGamePhase::SubmittingFormulas)
         {
-            UE_LOG(LogTemp, Warning, TEXT("모든 플레이어 수식 제출 완료 -> 카드 유추 페이즈로 전환"));
             CurrentGamePhase = ETOGamePhase::GuessingCards;
             SubmittedPlayerIndices.Empty(); // 카드 유추 단계를 위해 목록 초기화
+            BroadcastUIUpdate();
         }
         // 카드 유추를 모두 했을 때 -> 라운드 종료/정산으로 전환
         else if (CurrentGamePhase == ETOGamePhase::GuessingCards)
         {
-            UE_LOG(LogTemp, Warning, TEXT("모든 플레이어 카드 유추 완료 -> 라운드 종료"));
-            CurrentGamePhase = ETOGamePhase::RoundOver;
+            CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
             SubmittedPlayerIndices.Empty(); // 다음라운드를 위해 목록 초기화
-			
-            // 라운드 종료 처리 로직 호출 (점수 정산, 다음 라운드 대기 등)
+            BroadcastUIUpdate();
+        }
+    }
+}
+
+// 모든 플레이어의 UI 업데이트 함수
+void ATOGameMode::BroadcastUIUpdate()
+{
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+        if (TOPC)
+        {
+            FTOPlayerUIData UIData = GetUIDataForPlayer(TOPC);
+            TOPC->Client_UpdateFormulaUI(UIData);
+        }
+    }
+}
+
+// 플레이어가 Ready 버튼을 눌렀을 때 처리 (TOPlayerController 등에서 호출 가능)
+void ATOGameMode::SetPlayerReady(ATOPlayerController* TargetPC, bool bReady)
+{
+    if (!TargetPC || CurrentGamePhase != ETOGamePhase::WaitingToStart) return;
+
+    // 4명 미만일 때는 준비 안 됨
+    int32 CurrentPlayerCount = GetNumPlayers();
+    if (CurrentPlayerCount < 4) return;
+
+    // PlayerState의 Ready 상태 갱신
+    if (ATOPlayerState* TOPS = TargetPC->GetPlayerState<ATOPlayerState>())
+    {
+        TOPS->bIsReadyToPlay = bReady;
+    }
+
+    // 4명 이상 접속 중이고 전원 Ready를 눌렀다면 게임 시작
+    if (CheckAllPlayersReady())
+    {
+        StartNewRound(CurrentPlayerCount);
+    }
+}
+
+bool ATOGameMode::CheckAllPlayersReady()
+{
+    int32 CurrentPlayerCount = GetNumPlayers();
+
+    // 4명 미만이거나 6명 초과 시 시작 불가
+    if (CurrentPlayerCount < 4 || CurrentPlayerCount > 6)
+    {
+        return false;
+    }
+
+    // 모든 플레이어 컨트롤러를 순회하며 Ready 상태 확인
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+        if (TOPC)
+        {
+            ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>();
+            // PlayerState가 없거나 Ready를 안 한 플레이어가 있으면 false
+            if (!TOPS || !TOPS->bIsReadyToPlay)
+            {
+                return false;
+            }
+        }
+    }
+
+    return true; // 전원 Ready 완료
+}
+
+void ATOGameMode::BroadcastLobbyState()
+{
+    // 4명 이상 6명 이하일 때만 Ready 버튼에 불이 들어오도록 bool 설정
+    bool bCanEnableReady = (GetNumPlayers() >= 4 && GetNumPlayers() <= 6);
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+        if (TOPC)
+        {
+            // TOPlayerController의 ClientRPC 호출 -> UI 버튼 활성화/비활성화 처리
+            // TOPC-> 준비버튼 클릭해서 준비하는 함수 (bCanEnableReady);
         }
     }
 }

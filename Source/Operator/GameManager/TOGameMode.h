@@ -50,6 +50,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GameMode")
     void AddRevealedAlphabetForPlayer(int32 TargetPlayerIndex, const FString& Alphabet);
 
+    // 라운드 종료 처리
+    UFUNCTION(BlueprintCallable, Category = "GameMode")
+    void EndRound(int32 WinnerIndex);
+    
 protected:
     // 카드덱 컴포넌트 변수 선언 (서버 소유)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -82,7 +86,27 @@ protected:
     // 중간에 다른 플레이어가 나갔을 때 그 자리를 비우고, 또 다른 플레이어가 접속했을 때 재사용
     TArray<int32> AvailableIndices;
     
+    
+    
 private:
     // 모든 플레이어가 수식을 다 냈는지 검사하고 다음 단계로 넘어가는 내부 함수
     void CheckAllFormulasSubmitted();
+    
+    
+protected:
+    
+    // 라운드 승리자 발생 여부 플래그
+    bool bRoundHasWinner = false;
+
+    // 모든 클라이언트의 UI를 일괄 갱신하는 브로드캐스트 함수
+    void BroadcastUIUpdate();
+    
+    // 플레이어가 Ready 버튼을 눌렀을 때 호출하는 함수
+    void SetPlayerReady(ATOPlayerController* TargetPC, bool bReady);
+    
+    // 4명 이상 접속 여부에 따라 Ready 버튼 활성화 함수
+    void BroadcastLobbyState();
+    
+    // 현재 접속한 전원이 Ready 상태인지 검사
+    bool CheckAllPlayersReady();
 };

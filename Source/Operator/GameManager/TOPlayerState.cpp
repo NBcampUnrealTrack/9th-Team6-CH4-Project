@@ -27,9 +27,9 @@ void ATOPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 
 void ATOPlayerState::AddScorePoints(int32 InScore)
 {
-	//if (HasAuthority()) // 서버에서만 수정 가능
-	//{
-		//PlayerScore += InScore;
-		//SetScore(PlayerScore); // APlayerState 기본 제공 Score 변수도 동기화
-	//}
+	if (HasAuthority()) // 서버에서만 수정 가능
+	{
+		PlayerScore += InScore;
+		SetScore(PlayerScore); // APlayerState 기본 제공 Score 변수도 동기화
+	}
 }
