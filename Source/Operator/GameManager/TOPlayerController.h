@@ -52,4 +52,18 @@ public:
 	// 0~5까지 사용할 예정이기 때문에 -1로 초기화 (Null)
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "GameData")
 	int32 AssignedPlayerIndex = -1;
+	
+public:
+	// 화면에 게임 플레이 위젯을 생성하고 띄워주는 함수
+	UFUNCTION(BlueprintCallable, Category = "TO|UI")
+	void ShowGameWidget();
+
+protected:
+	// 생성할 위젯의 블루프린트 클래스 타입 (에디터에서 지정)
+	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
+	TSubclassOf<class UUserWidget> GameWidgetClass;
+
+	// 실제로 생성된 위젯 객체 보관용
+	UPROPERTY()
+	class UUserWidget* CurrentGameWidget;
 };
