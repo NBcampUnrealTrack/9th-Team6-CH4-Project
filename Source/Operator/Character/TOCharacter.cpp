@@ -6,6 +6,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimInstance.h"
+#include "../GameManager/TOPlayerController.h"
+#include "EnhancedInputComponent.h"
+#include "InputCoreTypes.h"
 
 ATOCharacter::ATOCharacter()
 {
@@ -29,6 +32,25 @@ void ATOCharacter::Tick(float DeltaTime)
 void ATOCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	{
+		if (ToggleHUDAction)
+		{
+			EnhancedInputComponent->BindAction(ToggleHUDAction, ETriggerEvent::Started, this, &ATOCharacter::RequestToggleHUD);
+		}
+	}
+
+	// Tab 키 입력 시 PC->ToggleHUD() 호출 (기본 키 바인딩)
+	PlayerInputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ATOCharacter::RequestToggleHUD);
+}
+
+void ATOCharacter::RequestToggleHUD()
+{
+	if (ATOPlayerController* PC = Cast<ATOPlayerController>(GetController()))
+	{
+		PC->ToggleHUD();
+	}
 }
 
 void ATOCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -116,24 +138,82 @@ void ATOCharacter::AttachActorToHandSocket(AActor* TargetActor)
 
 void ATOCharacter::PlayEmote(ECharacterEmoteState EmoteState)
 {
+	// Local immediate playback for responsiveness
+	UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	if (AnimInst)
+	{
+		UAnimMontage* TargetMontage = nullptr;
+		switch (EmoteState)
+		{
+		case ECharacterEmoteState::Victory:
+			TargetMontage = VictoryMontage ? VictoryMontage : CorrectMontage;
+			break;
+		case ECharacterEmoteState::Defeat:
+			TargetMontage = DefeatMontage ? DefeatMontage : WrongMontage;
+			break;
+		case ECharacterEmoteState::Pointing:
+			TargetMontage = PointingMontage;
+			break;
+		case ECharacterEmoteState::Thinking:
+			TargetMontage = ThinkingMontage;
+			break;
+		case ECharacterEmoteState::SubmitAnswer:
+			TargetMontage = SubmitMontage;
+			break;
+		case ECharacterEmoteState::CorrectAnswer:
+			TargetMontage = CorrectMontage ? CorrectMontage : VictoryMontage;
+			break;
+		case ECharacterEmoteState::WrongAnswer:
+			TargetMontage = WrongMontage ? WrongMontage : DefeatMontage;
+			break;
+		case ECharacterEmoteState::GuessSuccess:
+			TargetMontage = GuessSuccessMontage;
+			break;
+		default:
+			break;
+		}
+
+		if (TargetMontage)
+		{
+			AnimInst->Montage_Play(TargetMontage);
+		}
+	}
+
+	// Server replication
 	if (HasAuthority())
 	{
 		Multicast_PlayEmote(EmoteState);
 	}
 	else
 	{
-		Multicast_PlayEmote(EmoteState);
+		Server_PlayEmote(EmoteState);
 	}
+}
+
+void ATOCharacter::Server_PlayEmote_Implementation(ECharacterEmoteState EmoteState)
+{
+	Multicast_PlayEmote(EmoteState);
 }
 
 void ATOCharacter::Multicast_PlayEmote_Implementation(ECharacterEmoteState EmoteState)
 {
+	if (IsLocallyControlled()) return; // Already played locally
+
 	UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
 	if (!AnimInst) return;
 
 	UAnimMontage* TargetMontage = nullptr;
 	switch (EmoteState)
 	{
+	case ECharacterEmoteState::Victory:
+		TargetMontage = VictoryMontage ? VictoryMontage : CorrectMontage;
+		break;
+	case ECharacterEmoteState::Defeat:
+		TargetMontage = DefeatMontage ? DefeatMontage : WrongMontage;
+		break;
+	case ECharacterEmoteState::Pointing:
+		TargetMontage = PointingMontage;
+		break;
 	case ECharacterEmoteState::Thinking:
 		TargetMontage = ThinkingMontage;
 		break;
@@ -141,10 +221,10 @@ void ATOCharacter::Multicast_PlayEmote_Implementation(ECharacterEmoteState Emote
 		TargetMontage = SubmitMontage;
 		break;
 	case ECharacterEmoteState::CorrectAnswer:
-		TargetMontage = CorrectMontage;
+		TargetMontage = CorrectMontage ? CorrectMontage : VictoryMontage;
 		break;
 	case ECharacterEmoteState::WrongAnswer:
-		TargetMontage = WrongMontage;
+		TargetMontage = WrongMontage ? WrongMontage : DefeatMontage;
 		break;
 	case ECharacterEmoteState::GuessSuccess:
 		TargetMontage = GuessSuccessMontage;

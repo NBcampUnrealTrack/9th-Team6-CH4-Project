@@ -13,12 +13,14 @@ UENUM(BlueprintType)
 enum class ECharacterEmoteState : uint8
 {
 	None            UMETA(DisplayName = "None"),
+	Victory         UMETA(DisplayName = "Victory (F1)"),
+	Defeat          UMETA(DisplayName = "Defeat (F2)"),
+	Pointing        UMETA(DisplayName = "Pointing (F3)"),
 	Thinking        UMETA(DisplayName = "Thinking"),
 	SubmitAnswer    UMETA(DisplayName = "Submit Answer"),
 	CorrectAnswer   UMETA(DisplayName = "Correct Answer (+3)"),
 	WrongAnswer     UMETA(DisplayName = "Wrong Answer"),
-	GuessSuccess    UMETA(DisplayName = "Guess Success (+1)"),
-	Defeat          UMETA(DisplayName = "Defeat")
+	GuessSuccess    UMETA(DisplayName = "Guess Success (+1)")
 };
 
 UCLASS()
@@ -36,6 +38,15 @@ protected:
 public:	
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	// =========================================================================
+	// UI & HUD Input Toggle
+	// =========================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Input")
+	class UInputAction* ToggleHUDAction;
+
+	UFUNCTION(BlueprintCallable, Category = "Operator|UI")
+	void RequestToggleHUD();
 
 	// =========================================================================
 	// Dynamic Modular Mesh Leader Pose Sync
@@ -72,8 +83,17 @@ public:
 	void AttachActorToHandSocket(AActor* TargetActor);
 
 	// =========================================================================
-	// Animation Montages & Directing Emotes
+	// Animation Montages & Directing Emotes (F1: Victory, F2: Defeat, F3: Pointing)
 	// =========================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Animation")
+	UAnimMontage* VictoryMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Animation")
+	UAnimMontage* DefeatMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Animation")
+	UAnimMontage* PointingMontage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Animation")
 	UAnimMontage* SitIdleMontage;
 
@@ -94,6 +114,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Operator|Animation")
 	void PlayEmote(ECharacterEmoteState EmoteState);
+
+	UFUNCTION(Server, Reliable)
+	void Server_PlayEmote(ECharacterEmoteState EmoteState);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayEmote(ECharacterEmoteState EmoteState);
