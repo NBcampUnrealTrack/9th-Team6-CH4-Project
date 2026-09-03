@@ -6,6 +6,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimInstance.h"
+#include "../GameManager/TOPlayerController.h"
+#include "EnhancedInputComponent.h"
+#include "InputCoreTypes.h"
 
 ATOCharacter::ATOCharacter()
 {
@@ -29,6 +32,25 @@ void ATOCharacter::Tick(float DeltaTime)
 void ATOCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	{
+		if (ToggleHUDAction)
+		{
+			EnhancedInputComponent->BindAction(ToggleHUDAction, ETriggerEvent::Started, this, &ATOCharacter::RequestToggleHUD);
+		}
+	}
+
+	// Tab 키 입력 시 PC->ToggleHUD() 호출 (기본 키 바인딩)
+	PlayerInputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ATOCharacter::RequestToggleHUD);
+}
+
+void ATOCharacter::RequestToggleHUD()
+{
+	if (ATOPlayerController* PC = Cast<ATOPlayerController>(GetController()))
+	{
+		PC->ToggleHUD();
+	}
 }
 
 void ATOCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

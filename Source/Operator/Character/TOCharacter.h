@@ -40,6 +40,15 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	// =========================================================================
+	// UI & HUD Input Toggle
+	// =========================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Input")
+	class UInputAction* ToggleHUDAction;
+
+	UFUNCTION(BlueprintCallable, Category = "Operator|UI")
+	void RequestToggleHUD();
+
+	// =========================================================================
 	// Dynamic Modular Mesh Leader Pose Sync
 	// =========================================================================
 	UFUNCTION(BlueprintCallable, Category = "Operator|ModularMesh")
