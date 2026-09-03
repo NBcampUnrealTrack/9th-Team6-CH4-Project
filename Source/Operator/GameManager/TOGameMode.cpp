@@ -71,6 +71,10 @@ void ATOGameMode::Logout(AController* Exiting)
         // 퇴장한 유저의 인덱스를 재활용 배열에 등록
         AvailableIndices.Push(TOPC->AssignedPlayerIndex);
     }
+    // 6명 중 1명이 퇴장하여 5명이 되었을 때, 남은 준비 상태로 인해 자동으로 시작되는 현상 방지
+    // 누군가 나가면 Ready 상태였던 모든 플레이어의 준비 상태를 false로 변경
+    ResetAllPlayersReadyState();
+    
     BroadcastLobbyState();
 }
 
@@ -155,17 +159,16 @@ void ATOGameMode::AddRevealedAlphabetForPlayer(int32 TargetPlayerIndex, const FS
 
 void ATOGameMode::EndRound(int32 WinnerIndex)
 {
-    CurrentGamePhase = ETOGamePhase::RoundOver;
-    SubmittedPlayerIndices.Empty();
+    // 여기에 추가 내용 구현(라운드 종료 연출 나오고 몇초 뒤 이동 등)
+    
+    // 현재 세션 및 플레이어들을 그대로 유지하면서 게임 페이즈만 대기(로비) 상태로 변경
+    CurrentGamePhase = ETOGamePhase::WaitingToStart;
 
-    BroadcastUIUpdate();
+    // 모든 플레이어의 Ready 상태를 false로 초기화
+    ResetAllPlayersReadyState();
 
-    // 3초 후 다음 라운드 시작 (현재 접속 플레이어 수 인자로 전달)
-    FTimerHandle TimerHandle;
-    GetWorldTimerManager().SetTimer(TimerHandle, [this]()
-    {
-        StartNewRound(GetNumPlayers());
-    }, 3.0f, false);
+    // 로비 상태 변경 및 UI 갱신을 모든 클라이언트에게 통보
+    BroadcastLobbyState();
 }
 
 // CurrentGamePhase에 따라 필요한 보관함으로 분기 처리 (일괄 검증을 위해)
@@ -378,6 +381,26 @@ void ATOGameMode::BroadcastLobbyState()
         if (TOPC)
         {
             TOPC->Client_UpdateLobbyState(bCanEnableReady);
+        }
+    }
+}
+
+
+void ATOGameMode::ResetAllPlayersReadyState()
+{
+    // 현재 서버에 접속되어 있는 모든 플레이어 컨트롤러 순회
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+        if (TOPC)
+        {
+            // 각 플레이어의 PlayerState 접근
+            ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>();
+            if (TOPS)
+            {
+                // Ready 플래그를 false(준비 해제)로 변경
+                TOPS->bIsReadyToPlay = false;
+            }
         }
     }
 }
