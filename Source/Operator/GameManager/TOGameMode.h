@@ -55,6 +55,9 @@ private:
     // 4명 이상 접속 여부에 따라 Ready 버튼 활성화 함수
     void BroadcastLobbyState();
     
+    // 모든 플레이어의 Ready 상태를 false로 초기화하는 함수
+    void ResetAllPlayersReadyState();
+
     // 현재 접속한 전원이 Ready 상태인지 검사
     bool CheckAllPlayersReady();
     
