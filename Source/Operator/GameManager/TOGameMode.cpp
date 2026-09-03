@@ -15,7 +15,8 @@ ATOGameMode::ATOGameMode()
     CurrentGamePhase = ETOGamePhase::WaitingToStart;
     
     // 커스텀 Controller 및 PlayerState 등록
-    PlayerControllerClass = ATOPlayerController::StaticClass();
+    // PlayerController 강제 할당하지않고
+    // BP_TOGameMode - PlayerController class 를 BP_TOPlayerController로 적용
     PlayerStateClass = ATOPlayerState::StaticClass();
 }
 
@@ -120,79 +121,6 @@ void ATOGameMode::StartNewRound(int32 PlayerCount)
 }
 
 
-
-// [Phase 1] 플레이어가 수식을 제출했을 때
-void ATOGameMode::SubmitPlayerFormula(ATOPlayerController* SenderController, const FTOGuessAllInputData& GuessData)
-{
-    if (!SenderController || CurrentGamePhase != ETOGamePhase::SubmittingFormulas) return;
-
-    int32 SenderIndex = SenderController->AssignedPlayerIndex;
-    if (SubmittedPlayerIndices.Contains(SenderIndex)) return;    // 이미 제출한 플레이어면 중복 처리 방지
-
-    // 제출 기록 추가
-    SubmittedPlayerIndices.Add(SenderIndex);
-
-    // 정답 검증 처리
-    bool bIsCorrect = UTOFormula::VerifyAllAnswerWithMap(CurrentServerCardData, GuessData);
-    if (bIsCorrect)
-    {
-        // 정답 시 승리 플래그 설정 및 점수 부여 후 라운드 종료
-        bRoundHasWinner = true;
-        
-        if (ATOPlayerState* TOPS = SenderController->GetPlayerState<ATOPlayerState>())
-        {
-            TOPS->AddScorePoints(1);
-        }
-
-        EndRound(SenderIndex);
-        return;
-    }
-
-    // 오답 시 전원 제출 완료 여부 확인
-    CheckAllFormulasSubmitted();
-}
-
-
-
-// [Phase 2] 타인의 카드 유추 제출
-void ATOGameMode::SubmitPlayerGuess(ATOPlayerController* SenderController, const FTOGuessSingleInputData& SingleGuessData)
-{
-    if (!SenderController || CurrentGamePhase != ETOGamePhase::GuessingCards) return;
-
-    int32 SenderIndex = SenderController->AssignedPlayerIndex;
-    if (SubmittedPlayerIndices.Contains(SenderIndex)) return; // 이미 유추 제출함
-
-    // 단일 카드 유추 검증
-    bool bIsMatch = UTOFormula::VerifySingleCard(CurrentServerCardData, SingleGuessData);
-
-    // 무효값을 둬서 유추 실패 시 안전 장치 구현
-    int32 RevealedVal = -999;
-    if (bIsMatch)
-    {
-        AddRevealedAlphabetForPlayer(SenderIndex, SingleGuessData.TargetAlphabet);
-
-        for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
-        {
-            if (Card.PlayerAlphabet == SingleGuessData.TargetAlphabet)
-            {
-                RevealedVal = Card.CardValue;
-                break;
-            }
-        }
-
-        FTOPlayerUIData UpdatedUIData = GetUIDataForPlayer(SenderController);
-        SenderController->Client_UpdateFormulaUI(UpdatedUIData);
-    }
-
-    SenderController->Client_ReceiveGuessResult(bIsMatch, SingleGuessData.TargetAlphabet, RevealedVal);
-
-    // 제출한 플레이어 목록에 추가 후 전체 제출 여부 체크
-    SubmittedPlayerIndices.Add(SenderIndex);
-    CheckAllFormulasSubmitted();
-}
-
-
-
 // 대상 플레이어의 Controller에서 인덱스를 추출하여 해당 플레이어가 알고 있는 정보 기반의 UI 데이터 구축
 FTOPlayerUIData ATOGameMode::GetUIDataForPlayer(AController* TargetPlayer)
 {
@@ -240,30 +168,129 @@ void ATOGameMode::EndRound(int32 WinnerIndex)
     }, 3.0f, false);
 }
 
-// 단계 전환 및 제출 검증 함수
+// CurrentGamePhase에 따라 필요한 보관함으로 분기 처리 (일괄 검증을 위해)
+void ATOGameMode::SubmitPlayerInput(ATOPlayerController* SenderController, const FTOGuessAllInputData& FormulaData, const FTOGuessSingleInputData& SingleGuessData)
+{
+    if (!SenderController) return;
+
+    int32 SenderIndex = SenderController->AssignedPlayerIndex;
+    if (SubmittedPlayerIndices.Contains(SenderIndex)) return;
+
+    if (CurrentGamePhase == ETOGamePhase::SubmittingFormulas)
+    {
+        SubmittedPlayerIndices.Add(SenderIndex);
+        PendingFormulaSubmissions.Add(SenderIndex, FormulaData);
+        CheckAllFormulasSubmitted();
+    }
+    else if (CurrentGamePhase == ETOGamePhase::GuessingCards)
+    {
+        SubmittedPlayerIndices.Add(SenderIndex);
+        PendingGuessSubmissions.Add(SenderIndex, SingleGuessData);
+        CheckAllFormulasSubmitted();
+    }
+}
+
+// 현재 턴(CurrentGamePhase) 에 따라 검증하는 함수 알맞게 적용해주는 함수
 void ATOGameMode::CheckAllFormulasSubmitted()
 {
-    if (bRoundHasWinner) return; // 이미 정답자가 나온 경우 무시
-    int32 TotalPlayers = GetNumPlayers(); // 현재 접속 중인 플레이어 수
+    if (bRoundHasWinner) return;
+    int32 TotalPlayers = GetNumPlayers();
 
-    // 모든 플레이어가 현재 페이즈의 제출/유추를 마쳤는지 확인
     if (SubmittedPlayerIndices.Num() >= TotalPlayers)
     {
-        // 정답 제출을 모두 했을 때 -> 카드 유추 단계로 전환
         if (CurrentGamePhase == ETOGamePhase::SubmittingFormulas)
         {
-            CurrentGamePhase = ETOGamePhase::GuessingCards;
-            SubmittedPlayerIndices.Empty(); // 카드 유추 단계를 위해 목록 초기화
-            BroadcastUIUpdate();
+            ProcessAllFormulaSubmissions();
         }
-        // 카드 유추를 모두 했을 때 -> 라운드 종료/정산으로 전환
         else if (CurrentGamePhase == ETOGamePhase::GuessingCards)
         {
-            CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
-            SubmittedPlayerIndices.Empty(); // 다음라운드를 위해 목록 초기화
-            BroadcastUIUpdate();
+            ProcessAllGuessSubmissions();
         }
     }
+}
+
+// 
+void ATOGameMode::ProcessAllFormulaSubmissions()
+{
+    TArray<int32> WinnersThisRound;
+
+    for (const auto& Pair : PendingFormulaSubmissions)
+    {
+        if (UTOFormula::VerifyAllAnswerWithMap(CurrentServerCardData, Pair.Value))
+        {
+            WinnersThisRound.Add(Pair.Key);
+        }
+    }
+
+    PendingFormulaSubmissions.Empty();
+    SubmittedPlayerIndices.Empty();
+
+    if (WinnersThisRound.Num() > 0)
+    {
+        bRoundHasWinner = true;
+
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+            if (TOPC && WinnersThisRound.Contains(TOPC->AssignedPlayerIndex))
+            {
+                if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
+                {
+                    TOPS->AddScorePoints(1);
+                }
+            }
+        }
+
+        EndRound(WinnersThisRound[0]);
+    }
+    else
+    {
+        // 정답자가 없으면 카드 유추 단계로 전환 후 UI 전파
+        CurrentGamePhase = ETOGamePhase::GuessingCards;
+        BroadcastUIUpdate();
+    }
+}
+
+void ATOGameMode::ProcessAllGuessSubmissions()
+{
+    for (const auto& Pair : PendingGuessSubmissions)
+    {
+        int32 PlayerIndex = Pair.Key;
+        const FTOGuessSingleInputData& SingleGuessData = Pair.Value;
+
+        bool bIsMatch = UTOFormula::VerifySingleCard(CurrentServerCardData, SingleGuessData);
+        int32 RevealedVal = -999;
+
+        if (bIsMatch)
+        {
+            AddRevealedAlphabetForPlayer(PlayerIndex, SingleGuessData.TargetAlphabet);
+            for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
+            {
+                if (Card.PlayerAlphabet == SingleGuessData.TargetAlphabet)
+                {
+                    RevealedVal = Card.CardValue;
+                    break;
+                }
+            }
+        }
+
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+            if (TOPC && TOPC->AssignedPlayerIndex == PlayerIndex)
+            {
+                TOPC->Client_ReceiveGuessResult(bIsMatch, SingleGuessData.TargetAlphabet, RevealedVal);
+                break;
+            }
+        }
+    }
+
+    PendingGuessSubmissions.Empty();
+    SubmittedPlayerIndices.Empty();
+
+    // 유추 처리 완료 후 다시 정답 제출 단계로 전환 후 UI 전파
+    CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
+    BroadcastUIUpdate();
 }
 
 // 모든 플레이어의 UI 업데이트 함수
@@ -298,6 +325,16 @@ void ATOGameMode::SetPlayerReady(ATOPlayerController* TargetPC, bool bReady)
     // 4명 이상 접속 중이고 전원 Ready를 눌렀다면 게임 시작
     if (CheckAllPlayersReady())
     {
+        // 모든 클라이언트의 UI를 로비 -> 인게임 HUD로 전환 요청
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+            if (TOPC)
+            {
+                TOPC->Client_OnGameStarted();
+            }
+        }
+
         StartNewRound(CurrentPlayerCount);
     }
 }
@@ -340,8 +377,7 @@ void ATOGameMode::BroadcastLobbyState()
         ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
         if (TOPC)
         {
-            // TOPlayerController의 ClientRPC 호출 -> UI 버튼 활성화/비활성화 처리
-            // TOPC-> 준비버튼 클릭해서 준비하는 함수 (bCanEnableReady);
+            TOPC->Client_UpdateLobbyState(bCanEnableReady);
         }
     }
 }
