@@ -21,6 +21,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void JoinMySession();
 
+	// =========================================================================
+	// Customization Selection Data
+	// =========================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
+	int32 SelectedHairIndex = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
+	int32 SelectedTopIndex = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
+	int32 SelectedBottomIndex = 0;
+
 protected:
 	IOnlineSessionPtr SessionInterface;
 
