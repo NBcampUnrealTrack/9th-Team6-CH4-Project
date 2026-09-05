@@ -47,6 +47,13 @@ void UTOGameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucces
     if (bWasSuccessful)
     {
         UE_LOG(LogTemp, Log, TEXT("Session Created Successfully: %s"), *SessionName.ToString());
+        
+        UWorld* World = GetWorld();
+        if (World)
+        {
+            // "/Game/Maps/GameMap?listen" -> 실제 프로젝트의 게임 맵 경로와 이름으로 변경하세요!
+            World->ServerTravel(TEXT("/Game/Maps/GameMap?listen"));
+        }
     }
     else
     {
@@ -78,4 +85,14 @@ void UTOGameInstance::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCom
     {
         UE_LOG(LogTemp, Warning, TEXT("Failed to Join Session!"));
     }
+}
+
+void UTOGameInstance::CreateRoom()
+{
+    CreateMySession();
+}
+
+void UTOGameInstance::JoinRoom()
+{
+    JoinMySession();
 }

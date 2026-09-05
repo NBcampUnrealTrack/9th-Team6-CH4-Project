@@ -19,8 +19,14 @@ public:
 	void CreateMySession();
 
 	UFUNCTION(BlueprintCallable, Category = "Session")
+	void CreateRoom();
+	
+	UFUNCTION(BlueprintCallable, Category = "Session")
 	void JoinMySession();
 
+	UFUNCTION(BlueprintCallable, Category = "Session")
+	void JoinRoom();
+	
 	// =========================================================================
 	// Customization Selection Data
 	// =========================================================================
