@@ -52,7 +52,8 @@ void UTOGameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucces
         if (World)
         {
             // "/Game/Maps/GameMap?listen" -> 실제 프로젝트의 게임 맵 경로와 이름으로 변경하세요!
-            World->ServerTravel(TEXT("/Game/Maps/GameMap?listen"));
+            World->ServerTravel(TEXT("/Game/Maps/DetectiveOffice/Levels/L_DetectiveOffice?listen"));
+            UE_LOG(LogTemp, Log, TEXT("Open Level Successfully: %s"), *SessionName.ToString());
         }
     }
     else
