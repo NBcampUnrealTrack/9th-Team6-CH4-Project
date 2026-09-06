@@ -29,4 +29,10 @@ public:
 	/** 게임/UI 혼합 입력 모드로 설정 */
 	UFUNCTION(BlueprintCallable, Category = "Operator|Menu")
 	void SetGameAndUIInputMode();
+	
+	
+protected:
+	
+	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
+	TSubclassOf<class UUserWidget> MainMenuWidgetClass;
 };
