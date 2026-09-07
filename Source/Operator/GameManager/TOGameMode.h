@@ -31,6 +31,8 @@ public:
     
     ATOGameMode();
     
+    void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+
     // 플레이어 로그인/로그아웃 
     virtual void PostLogin(APlayerController* NewPlayer) override;
     virtual void Logout(AController* Exiting) override;
@@ -147,4 +149,25 @@ private:
     
     // 변동 내용이 생길 때 모든 클라이언트의 UI를 일괄 갱신하는 함수
     void BroadcastUIUpdate();
-};
+    
+    
+    
+    //-----------------------플레이어 스폰(입장) 관련 파트
+public:
+
+    // 플레이어가 스폰 완료될 때 언리얼 엔진에서 호출되는 기본 함수 오버라이드
+    virtual void RestartPlayer(AController* NewPlayer) override;
+
+protected:
+    virtual void BeginPlay() override;
+
+    // 레벨에 배치된 PlayerIndex별 스폰 위치 액터 배열 (Index 0 ~ 5)
+    UPROPERTY(EditInstanceOnly, Category = "TO|Spawn")
+    TArray<AActor*> SpawnPositions;
+
+    // 플레이어 스폰 위치를 잡는 내부 헬퍼 함수
+    AActor* GetSpawnPointForIndex(int32 PlayerIndex);
+    };
+
+
+    
