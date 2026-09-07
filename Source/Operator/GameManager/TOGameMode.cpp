@@ -7,6 +7,9 @@
 #include "../Operation/TOCardDeckComponent.h"
 #include "TOPlayerController.h"
 #include "TOPlayerState.h"
+#include "EngineUtils.h"
+#include "../Interactive/TOSpawnPoint.h"
+
 
 // 생성자 (컴포넌트 생성 및 기본 페이즈 설정)
 ATOGameMode::ATOGameMode()
@@ -18,8 +21,36 @@ ATOGameMode::ATOGameMode()
     // PlayerController 강제 할당하지않고
     // BP_TOGameMode - PlayerController class 를 BP_TOPlayerController로 적용
     PlayerStateClass = ATOPlayerState::StaticClass();
+    
+    // 스폰 구역(좌석) 확보
+    SpawnPositions.SetNum(6);
 }
 
+
+// 접속자 처리 시작 전 인덱스 재활용 배열을 안전하게 초기화
+void ATOGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+    Super::InitGame(MapName, Options, ErrorMessage);
+
+    AvailableIndices.Empty();
+    NextPlayerIndex = 0;
+}
+
+
+void ATOGameMode::BeginPlay()
+{
+    Super::BeginPlay();
+
+    // 레벨 내에 배치된 "TOSpawnPoint" 태그를 가진 액터들을 자동으로 찾아 Index 순서대로 정렬 (에디터 수동 할당도 가능)
+    for (TActorIterator<ATOSpawnPoint> It(GetWorld()); It; ++It)
+    {
+        ATOSpawnPoint* SpawnPoint = *It;
+        if (SpawnPoint && SpawnPositions.IsValidIndex(SpawnPoint->SpawnIndex))
+        {
+            SpawnPositions[SpawnPoint->SpawnIndex] = SpawnPoint;
+        }
+    }
+}
 
 // 로그인 함수
 void ATOGameMode::PostLogin(APlayerController* NewPlayer)
@@ -29,34 +60,33 @@ void ATOGameMode::PostLogin(APlayerController* NewPlayer)
     {
         return;
     }
-    
-    Super::PostLogin(NewPlayer);
 
     ATOPlayerController* TOPC = Cast<ATOPlayerController>(NewPlayer);
-    if (!TOPC) return;
-
-    int32 AssignedIndex = -1;
-
-    // 이탈자 재활용 인덱스가 없으면 순차 증가 (0~5)
-    if (AvailableIndices.Num() > 0)
+    if (TOPC)
     {
-        AssignedIndex = AvailableIndices.Pop();
-    }
-    else
-    {
-        AssignedIndex = NextPlayerIndex++;
-    }
+        int32 AssignedIndex = -1;
 
-    // Controller에 할당
-    TOPC->AssignedPlayerIndex = AssignedIndex;
-
-    // PlayerState에 할당 (모든 클라이언트에 Replication 동기화)
-    if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
-    {
-        TOPS->SetAssignedPlayerIndex(AssignedIndex);
-        TOPS->bIsReadyToPlay = false; // 기본 Unready
+        // 이탈자 재활용 인덱스가 없으면 순차 증가 (0~5)
+        if (AvailableIndices.Num() > 0)
+        {
+            AssignedIndex = AvailableIndices.Pop();
+        }
+        else
+        {
+            AssignedIndex = NextPlayerIndex++;
+        }
+        // Controller에 할당
+        TOPC->AssignedPlayerIndex = AssignedIndex;
+        
+        // PlayerState에 할당 (모든 클라이언트에 Replication 동기화)
+        if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
+        {
+                TOPS->SetAssignedPlayerIndex(AssignedIndex);
+                TOPS->bIsReadyToPlay = false; // 기본 Unready
+        }
     }
     BroadcastLobbyState();
+    Super::PostLogin(NewPlayer);
 }
 
 
@@ -167,7 +197,14 @@ void ATOGameMode::EndRound(int32 WinnerIndex)
     // 모든 플레이어의 Ready 상태를 false로 초기화
     ResetAllPlayersReadyState();
 
-    // 로비 상태 변경 및 UI 갱신을 모든 클라이언트에게 통보
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+        if (TOPC)
+        {
+            TOPC->Client_OnGameEnded();
+        }
+    }
     BroadcastLobbyState();
 }
 
@@ -344,30 +381,38 @@ void ATOGameMode::SetPlayerReady(ATOPlayerController* TargetPC, bool bReady)
 
 bool ATOGameMode::CheckAllPlayersReady()
 {
-    int32 CurrentPlayerCount = GetNumPlayers();
+    int32 ValidPlayerCount = 0;
+    int32 ReadyPlayerCount = 0;
 
-    // 4명 미만이거나 6명 초과 시 시작 불가
-    if (CurrentPlayerCount < 4 || CurrentPlayerCount > 6)
+    // 접속해 있는 유효한 PlayerController들을 순회하며 카운트
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+        // 유효한 플레이어 컨트롤러 및 PlayerState 확인
+        if (TOPC && TOPC->AssignedPlayerIndex != -1)
+        {
+            ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>();
+            if (TOPS)
+            {
+                ValidPlayerCount++;
+
+                // Ready 상태인 플레이어 카운트
+                if (TOPS->bIsReadyToPlay)
+                {
+                    ReadyPlayerCount++;
+                }
+            }
+        }
+    }
+    const int32 MinRequiredPlayers = 4; 
+
+    if (ValidPlayerCount < MinRequiredPlayers || ValidPlayerCount > 6)
     {
         return false;
     }
 
-    // 모든 플레이어 컨트롤러를 순회하며 Ready 상태 확인
-    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-    {
-        ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
-        if (TOPC)
-        {
-            ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>();
-            // PlayerState가 없거나 Ready를 안 한 플레이어가 있으면 false
-            if (!TOPS || !TOPS->bIsReadyToPlay)
-            {
-                return false;
-            }
-        }
-    }
-
-    return true; // 전원 Ready 완료
+    // 3. 접속한 모든 유저가 Ready를 눌렀는지 검증
+    return (ValidPlayerCount == ReadyPlayerCount);
 }
 
 void ATOGameMode::BroadcastLobbyState()
@@ -403,4 +448,65 @@ void ATOGameMode::ResetAllPlayersReadyState()
             }
         }
     }
+}
+
+
+
+
+void ATOGameMode::RestartPlayer(AController* NewPlayer)
+{
+    Super::RestartPlayer(NewPlayer);
+
+    ATOPlayerController* TOPC = Cast<ATOPlayerController>(NewPlayer);
+    if (!TOPC) return;
+
+    int32 PlayerIndex = TOPC->AssignedPlayerIndex;
+    if (PlayerIndex < 0) return;
+
+    AActor* TargetSpawnPoint = GetSpawnPointForIndex(PlayerIndex);
+
+    if (!TargetSpawnPoint)
+    {
+        for (TActorIterator<ATOSpawnPoint> It(GetWorld()); It; ++It)
+        {
+            ATOSpawnPoint* SpawnPoint = *It;
+            if (SpawnPoint && SpawnPoint->SpawnIndex == PlayerIndex)
+            {
+                TargetSpawnPoint = SpawnPoint;
+                break;
+            }
+        }
+    }
+    
+    if (TargetSpawnPoint)
+    {
+        APawn* TargetPawn = TOPC->GetPawn();
+        if (TargetPawn)
+        {
+            FVector TargetLocation = TargetSpawnPoint->GetActorLocation();
+            FRotator TargetRotation = TargetSpawnPoint->GetActorRotation();
+
+            // ETeleportType::TeleportPhysics로 충돌을 무시하고 스폰 포인트에 강력 고정
+            TargetPawn->SetActorLocationAndRotation(
+                TargetLocation, 
+                TargetRotation, 
+                false, 
+                nullptr, 
+                ETeleportType::TeleportPhysics
+            );
+
+            // Controller 시선(Control Rotation) 동기화
+            TOPC->SetControlRotation(TargetRotation);
+            TOPC->ClientSetRotation(TargetRotation, true);
+        }
+    }
+}
+
+AActor* ATOGameMode::GetSpawnPointForIndex(int32 PlayerIndex)
+{
+    if (SpawnPositions.IsValidIndex(PlayerIndex) && SpawnPositions[PlayerIndex] != nullptr)
+    {
+        return SpawnPositions[PlayerIndex];
+    }
+    return nullptr;
 }

@@ -17,7 +17,7 @@ void ATOPlayerController::BeginPlay()
 	// 로컬 플레이어 진입 시 로비 UI 생성 및 기본 UI 모드 설정
 	if (IsLocalController())
 	{
-		if (LobbyWidgetClass)
+		if (LobbyWidgetClass && !CurrentLobbyWidget)
 		{
 			CurrentLobbyWidget = CreateWidget<UUserWidget>(this, LobbyWidgetClass);
 			if (CurrentLobbyWidget)
@@ -80,7 +80,9 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 }
 
 
-// [추가] 서버로 Ready 상태 전송
+
+
+//  서버로 Ready 상태 전송
 void ATOPlayerController::Server_SetReady_Implementation(bool bReady)
 {
 	ATOGameMode* GameMode = GetWorld()->GetAuthGameMode<ATOGameMode>();
@@ -154,6 +156,28 @@ void ATOPlayerController::Client_OnGameStarted_Implementation()
 	SetHUDVisible(true);
 }
 
+void ATOPlayerController::Client_OnGameEnded_Implementation()
+{
+	if (!IsLocalController()) return;
+
+	// 인게임 UI 제거
+	if (CurrentInGameHUDWidget)
+	{
+		CurrentInGameHUDWidget->RemoveFromParent();
+		CurrentInGameHUDWidget = nullptr;
+	}
+
+	// 로비 UI 다시 생성 및 화면 표시
+	if (LobbyWidgetClass && !CurrentLobbyWidget)
+	{
+		CurrentLobbyWidget = CreateWidget<UUserWidget>(this, LobbyWidgetClass);
+		if (CurrentLobbyWidget)
+		{
+			CurrentLobbyWidget->AddToViewport();
+		}
+	}
+	SetHUDVisible(false); // 또는 로비용 HUD 설정
+}
 
 // 서버로부터 제출 결과를 수신하여 클라이언트에 성공/실패 연출 출력
 void ATOPlayerController::Client_ReceiveGuessResult_Implementation(bool bIsCorrect, const FString& TargetAlphabet, int32 RevealedValue)
