@@ -60,9 +60,13 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_UpdateLobbyState(bool bCanEnableReady);
 
-	// 게임 시작 시 로비 UI 제거 및 인게임 HUD 전환 요청
+	// 게임 시작 시 로비 UI 제거 및 인게임 UI 전환 요청
 	UFUNCTION(Client, Reliable)
 	void Client_OnGameStarted();
+	
+	// 게임 종료 시 인게임 UI 제거 및 로비 UI 전환 요청
+	UFUNCTION(Client, Reliable)
+	void Client_OnGameEnded();
 
 	// 수식 UI 및 페이즈 상태 갱신 요청
 	UFUNCTION(Client, Reliable)
