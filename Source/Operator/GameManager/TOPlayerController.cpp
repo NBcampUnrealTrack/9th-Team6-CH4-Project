@@ -1,8 +1,11 @@
 #include "TOPlayerController.h"
 #include "TOPlayerState.h"
 #include "TOGameMode.h"
+#include "TOGameState.h"
 #include "Net/UnrealNetwork.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/EditableTextBox.h"
+
 
 ATOPlayerController::ATOPlayerController()
 {
@@ -14,22 +17,20 @@ void ATOPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 로컬 플레이어 진입 시 로비 UI 생성 및 기본 UI 모드 설정
-	if (IsLocalController())
-	{
-		if (LobbyWidgetClass && !CurrentLobbyWidget)
-		{
-			CurrentLobbyWidget = CreateWidget<UUserWidget>(this, LobbyWidgetClass);
-			if (CurrentLobbyWidget)
-			{
-				CurrentLobbyWidget->AddToViewport();
-			}
-		}
+	if (!IsLocalController()) return;
 
-		// 로비에서 마우스 커서 켜고 GameAndUI 모드 세팅
-		bShowMouseCursor = true;
-		SetInputMode(FInputModeGameAndUI());
+	// 레벨에 진입하면 WBP_InGameMain을 최상위 뷰포트에 생성하여 항시 유지
+	if (InGameMainWidgetClass && !CurrentInGameMainWidget)
+	{
+		CurrentInGameMainWidget = CreateWidget<UUserWidget>(this, InGameMainWidgetClass);
+		if (CurrentInGameMainWidget)
+		{
+			CurrentInGameMainWidget->AddToViewport();
+		}
 	}
+
+	// 초기 상태는 로비(대기) 상태이므로 WBP_WaitingGame을 서브 위젯 영역에 생성
+	Client_OnGameEnded_Implementation();
 }
 
 
@@ -45,7 +46,7 @@ void ATOPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 void ATOPlayerController::ToggleHUD()
 {
 	// 인게임 HUD가 띄워져 있을 때만 토글 작동
-	if (CurrentInGameHUDWidget)
+	if (CurrentInGameMainWidget)
 	{
 		SetHUDVisible(!bIsHUDVisible);
 	}
@@ -57,12 +58,12 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 {
 	bIsHUDVisible = bVisible;
 
-	if (!CurrentInGameHUDWidget) return;
+	if (!CurrentInGameMainWidget) return;
 
 	if (bIsHUDVisible)
 	{
 		// [HUD On] UI 상호작용 가능 + 마우스 커서 노출
-		CurrentInGameHUDWidget->SetVisibility(ESlateVisibility::Visible);
+		CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Visible);
 		bShowMouseCursor = true;
 		
 		FInputModeGameAndUI InputMode;
@@ -72,14 +73,12 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 	else
 	{
 		// [HUD Off] 시야 조작 가능 + 마우스 커서 제거
-		CurrentInGameHUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+		CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Collapsed);
 		bShowMouseCursor = false;
 		
 		SetInputMode(FInputModeGameOnly());
 	}
 }
-
-
 
 
 //  서버로 Ready 상태 전송
@@ -136,47 +135,46 @@ void ATOPlayerController::Client_UpdateFormulaUI_Implementation(const FTOPlayerU
 
 void ATOPlayerController::Client_OnGameStarted_Implementation()
 {
-	if (!IsLocalController()) return;
+	if (!IsLocalController() || !CurrentInGameMainWidget) return;
 
-	if (CurrentLobbyWidget)
+	// 기존 서브 위젯(WaitingGame) 제거
+	if (CurrentSubWidget)
 	{
-		CurrentLobbyWidget->RemoveFromParent();
-		CurrentLobbyWidget = nullptr;
+		CurrentSubWidget->RemoveFromParent();
+		CurrentSubWidget = nullptr;
 	}
-
-	if (InGameHUDWidgetClass && !CurrentInGameHUDWidget)
+	
+	// StartGame 위젯을 Viewport에 직접 생성하여 덮어 씌움
+	if (StartGameWidgetClass)
 	{
-		CurrentInGameHUDWidget = CreateWidget<UUserWidget>(this, InGameHUDWidgetClass);
-		if (CurrentInGameHUDWidget)
+		CurrentSubWidget = CreateWidget<UUserWidget>(this, StartGameWidgetClass);
+		if (CurrentSubWidget)
 		{
-			CurrentInGameHUDWidget->AddToViewport();
+			CurrentSubWidget->AddToViewport(); 
 		}
 	}
-
-	SetHUDVisible(true);
 }
 
 void ATOPlayerController::Client_OnGameEnded_Implementation()
 {
-	if (!IsLocalController()) return;
+	if (!IsLocalController() || !CurrentInGameMainWidget) return;
 
-	// 인게임 UI 제거
-	if (CurrentInGameHUDWidget)
+	// 기존 서브 위젯(StartGame) 제거
+	if (CurrentSubWidget)
 	{
-		CurrentInGameHUDWidget->RemoveFromParent();
-		CurrentInGameHUDWidget = nullptr;
+		CurrentSubWidget->RemoveFromParent();
+		CurrentSubWidget = nullptr;
 	}
 
-	// 로비 UI 다시 생성 및 화면 표시
-	if (LobbyWidgetClass && !CurrentLobbyWidget)
+	// WaitingGame 위젯을 Viewport에 직접 생성하여 덮어 씌움
+	if (WaitingGameWidgetClass)
 	{
-		CurrentLobbyWidget = CreateWidget<UUserWidget>(this, LobbyWidgetClass);
-		if (CurrentLobbyWidget)
+		CurrentSubWidget = CreateWidget<UUserWidget>(this, WaitingGameWidgetClass);
+		if (CurrentSubWidget)
 		{
-			CurrentLobbyWidget->AddToViewport();
+			CurrentSubWidget->AddToViewport();
 		}
 	}
-	SetHUDVisible(false); // 또는 로비용 HUD 설정
 }
 
 // 서버로부터 제출 결과를 수신하여 클라이언트에 성공/실패 연출 출력
@@ -191,3 +189,43 @@ void ATOPlayerController::Client_ReceiveGuessResult_Implementation(bool bIsCorre
 		// UI에 오답 연출 출력
 	}
 }
+
+// 클라이언트가 입력한 메시지를 서버로 전송
+void ATOPlayerController::Server_SendChatMessage_Implementation(const FString& Message)
+{
+	// 메세지 공백이면 전송 X
+	FString TrimmedMessage = Message.TrimStartAndEnd();
+	if (TrimmedMessage.IsEmpty()) return;
+	
+	// 서버에서 보내는 사람의 이름/닉네임 추출 (PlayerState 활용)
+	FString SenderName = TEXT("Unknown");
+
+	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+	{
+		// PlayerState의 AssignedPlayerIndex(플레이어 번호) 호출
+		SenderName = FString::Printf(TEXT("Player %d"), TOPS->GetAssignedPlayerIndex());
+		// PlayerState에서 닉네임 구현 후 호출
+		// TOPS->GetPlayerName()
+	}
+
+	// 서버에서 모든 클라이언트로 채팅 메시지 브로드캐스트
+	Multicast_BroadcastChatMessage(SenderName, Message);
+}
+
+
+// 서버가 모든 클라이언트에게 채팅 메시지를 전파
+void ATOPlayerController::Multicast_BroadcastChatMessage_Implementation(const FString& SenderName, const FString& Message)
+{
+	if (APlayerController* LocalPC = GetWorld()->GetFirstPlayerController())
+	{
+		if (ATOGameState* GS = GetWorld()->GetGameState<ATOGameState>())
+		{
+			GS->Multicast_BroadcastChatMessage(SenderName, Message);
+		}
+	}
+}
+
+
+
+
+
