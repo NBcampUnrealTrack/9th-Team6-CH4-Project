@@ -26,6 +26,7 @@ void ATOPlayerController::BeginPlay()
 		if (CurrentInGameMainWidget)
 		{
 			CurrentInGameMainWidget->AddToViewport();
+			bShowMouseCursor = true;
 		}
 	}
 
@@ -45,11 +46,8 @@ void ATOPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 // IA 입력으로 호출되는 HUD 토글 함수
 void ATOPlayerController::ToggleHUD()
 {
-	// 인게임 HUD가 띄워져 있을 때만 토글 작동
-	if (CurrentInGameMainWidget)
-	{
-		SetHUDVisible(!bIsHUDVisible);
-	}
+	// 현재 가시성 상태의 반대로 토글
+	SetHUDVisible(!bIsHUDVisible);
 }
 
 
@@ -62,10 +60,20 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 
 	if (bIsHUDVisible)
 	{
-		// [HUD On] UI 상호작용 가능 + 마우스 커서 노출
-		CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Visible);
-		bShowMouseCursor = true;
+		if (CurrentInGameMainWidget)
+		{
+			CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Visible);
+		}
 		
+		if (CurrentSubWidget)
+		{
+			CurrentSubWidget->SetVisibility(ESlateVisibility::Visible);
+		}
+
+		// 마우스 커서 활성화
+		bShowMouseCursor = true;
+
+		// UI 상호작용 및 게임 입력을 동시에 받도록 설정
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
 		SetInputMode(InputMode);
@@ -73,9 +81,19 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 	else
 	{
 		// [HUD Off] 시야 조작 가능 + 마우스 커서 제거
-		CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Collapsed);
+		if (CurrentInGameMainWidget)
+		{
+			CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+
+		if (CurrentSubWidget)
+		{
+			CurrentSubWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+
 		bShowMouseCursor = false;
-		
+
+		// 게임 전용 입력 모드로 전환 (마우스로 시야 조작 가능)
 		SetInputMode(FInputModeGameOnly());
 	}
 }
