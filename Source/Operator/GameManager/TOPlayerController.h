@@ -60,9 +60,13 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_UpdateLobbyState(bool bCanEnableReady);
 
-	// 게임 시작 시 로비 UI 제거 및 인게임 HUD 전환 요청
+	// 게임 시작 시 로비 UI 제거 및 인게임 UI 전환 요청
 	UFUNCTION(Client, Reliable)
 	void Client_OnGameStarted();
+	
+	// 게임 종료 시 인게임 UI 제거 및 로비 UI 전환 요청
+	UFUNCTION(Client, Reliable)
+	void Client_OnGameEnded();
 
 	// 수식 UI 및 페이즈 상태 갱신 요청
 	UFUNCTION(Client, Reliable)
@@ -73,23 +77,46 @@ public:
 	void Client_ReceiveGuessResult(bool bIsCorrect, const FString& TargetAlphabet, int32 RevealedValue);
 
 
-protected:
 	// ------------------- UI - Class & Instance 파트 -----------------------------
-
-	// 에디터에서 블루프린트 위젯을 할당하기 위한 클래스 변수
+protected:
+	
+	// 최상위 메인 위젯 (WBP_InGameMain Class & Instance)
 	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
-	TSubclassOf<class UUserWidget> LobbyWidgetClass;
+	TSubclassOf<UUserWidget> InGameMainWidgetClass;
+
+	UPROPERTY(BlueprintReadOnly, Category = "TO|UI")
+	UUserWidget* CurrentInGameMainWidget;
+
+	// 교체될 서브 위젯 클래스들
+	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
+	TSubclassOf<UUserWidget> WaitingGameWidgetClass; // WBP_WaitingGame
 
 	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
-	TSubclassOf<class UUserWidget> InGameHUDWidgetClass;
+	TSubclassOf<UUserWidget> StartGameWidgetClass;   // WBP_StartGame
 
-	// 런타임에 생성된 위젯 인스턴스를 보관하기 위한 포인터 변수
-	UPROPERTY()
-	TObjectPtr<class UUserWidget> CurrentLobbyWidget;
+	// 현재 띄워져 있는 서브 위젯 보관용 포인터
+	UPROPERTY(BlueprintReadOnly, Category = "TO|UI")
+	UUserWidget* CurrentSubWidget;
 
-	UPROPERTY()
-	TObjectPtr<class UUserWidget> CurrentInGameHUDWidget;
-
+	// 3. 채팅 메시지 전용 소형 위젯 클래스
+	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
+	TSubclassOf<UUserWidget> ChatMessageWidgetClass; // WBP_ChatMessage
+	
 	// 현재 HUD 표시 및 UI 입력 모드 상태 관리 플래그
 	bool bIsHUDVisible = true;
+	
+	// -----------------------인게임 채팅 관련 파트 -----------------------------
+public:
+	//  채팅 전송 (Client -> Server)
+	UFUNCTION(Server, BlueprintCallable, Reliable)
+	void Server_SendChatMessage(const FString& Message);
+
+	// 채팅 브로드캐스트 (Server -> All Clients)
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_BroadcastChatMessage(const FString& SenderName, const FString& Message);
+
+	// 클라이언트 로컬 UI에 채팅 메시지 출력해주는 함수
+	UFUNCTION(BlueprintImplementableEvent, Category = "Chat")
+	void K2_AddChatMessageToUI(const FString& SenderName, const FString& Message);
+
 };
