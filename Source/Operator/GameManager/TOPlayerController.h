@@ -68,6 +68,9 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_OnGameEnded();
 
+	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
+	void K2_OnUpdateFormulaUI(const FTOPlayerUIData& NewUIData);
+	
 	// 수식 UI 및 페이즈 상태 갱신 요청
 	UFUNCTION(Client, Reliable)
 	void Client_UpdateFormulaUI(const FTOPlayerUIData& NewUIData);

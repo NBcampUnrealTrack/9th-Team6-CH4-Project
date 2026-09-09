@@ -147,7 +147,7 @@ void ATOPlayerController::Client_UpdateLobbyState_Implementation(bool bCanEnable
 
 void ATOPlayerController::Client_UpdateFormulaUI_Implementation(const FTOPlayerUIData& NewUIData)
 {
-	// 수신받은 NewUIData를 바인딩된 UUserWidget UI 요소에 적용하여 화면에 출력 예정
+	K2_OnUpdateFormulaUI(NewUIData);
 }
 
 
