@@ -53,6 +53,13 @@ public:
 	// =========================================================================
 	// Customization Selection Data
 	// =========================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|PlayerInfo")
+	FString PlayerName = TEXT("Player");
+	
+	//getter/setter
+	void SetPlayerName(FString& InMyPlayerName){PlayerName = InMyPlayerName;};
+	FString GetPlayerName() { return PlayerName; }
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
 	int32 SelectedHairIndex = 0;
 
