@@ -90,6 +90,17 @@ struct FTOPlayerUIData
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 MyCardValue = 0;
+    
+    // UI 카드를 배치하기 위한 카드 데이터 및 연산자 목록
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    TArray<FTOPlayerCardData> PlayerCards;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    TArray<ETOOperatorType> Operators;
+    
+    // 이미 정답을 맞혀서 공개된 알파벳 목록
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    TArray<FString> RevealedAlphabets;
 };
 
 // RPC 전송을 위한 Key-Value 쌍 구조체
