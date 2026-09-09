@@ -268,6 +268,7 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
     if (WinnersThisRound.Num() > 0)
     {
         bRoundHasWinner = true;
+        int32 WinnerIndex = WinnersThisRound[0];
 
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
@@ -278,10 +279,17 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
                 {
                     TOPS->AddScorePoints(1);
                 }
+                // 모든 클라이언트 화면에 브로드캐스트
+                TOPC->Multicast_ShowCorrectNotice(WinnerIndex);
+                break;
             }
         }
-
-        EndRound(WinnersThisRound[0]);
+        //3초 연출 후 라운드 종료 타이머 세팅
+        FTimerHandle NoticeTimerHandle;
+        GetWorldTimerManager().SetTimer(NoticeTimerHandle, FTimerDelegate::CreateLambda([this, WinnerIndex]()
+        {
+            EndRound(WinnerIndex);
+        }), 3.0f, false);
     }
     else
     {

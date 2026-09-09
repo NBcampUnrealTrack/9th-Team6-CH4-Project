@@ -98,6 +98,12 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 	}
 }
 
+void ATOPlayerController::Multicast_ShowCorrectNotice_Implementation(int32 WinnerPlayerIndex)
+{
+	// 각 클라이언트 로컬에서 블루프린트 이벤트 호출
+	K2_ShowCorrectNotice(WinnerPlayerIndex);
+}
+
 
 //  서버로 Ready 상태 전송
 void ATOPlayerController::Server_SetReady_Implementation(bool bReady)
@@ -147,7 +153,7 @@ void ATOPlayerController::Client_UpdateLobbyState_Implementation(bool bCanEnable
 
 void ATOPlayerController::Client_UpdateFormulaUI_Implementation(const FTOPlayerUIData& NewUIData)
 {
-	// 수신받은 NewUIData를 바인딩된 UUserWidget UI 요소에 적용하여 화면에 출력 예정
+	K2_OnUpdateFormulaUI(NewUIData);
 }
 
 
