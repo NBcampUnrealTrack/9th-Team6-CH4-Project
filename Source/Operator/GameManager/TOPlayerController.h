@@ -79,6 +79,12 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_ReceiveGuessResult(bool bIsCorrect, const FString& TargetAlphabet, int32 RevealedValue);
 
+	// 정답 연출
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_ShowCorrectNotice(int32 WinnerPlayerIndex);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
+	void K2_ShowCorrectNotice(int32 WinnerPlayerIndex);
 
 	// ------------------- UI - Class & Instance 파트 -----------------------------
 protected:
