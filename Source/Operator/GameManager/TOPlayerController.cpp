@@ -217,35 +217,37 @@ void ATOPlayerController::Client_ReceiveGuessResult_Implementation(bool bIsCorre
 // 클라이언트가 입력한 메시지를 서버로 전송
 void ATOPlayerController::Server_SendChatMessage_Implementation(const FString& Message)
 {
-	// 메세지 공백이면 전송 X
 	FString TrimmedMessage = Message.TrimStartAndEnd();
 	if (TrimmedMessage.IsEmpty()) return;
-	
-	// 서버에서 보내는 사람의 이름/닉네임 추출 (PlayerState 활용)
+    
+	// 닉네임 추출
 	FString SenderName = TEXT("Unknown");
-
 	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
 	{
-		// PlayerState의 AssignedPlayerIndex(플레이어 번호) 호출
-		SenderName = FString::Printf(TEXT("Player %d"), TOPS->GetAssignedPlayerIndex());
-		// PlayerState에서 닉네임 구현 후 호출
-		// TOPS->GetPlayerName()
+		SenderName = TOPS->GetCustomPlayerName();
+		if (SenderName.IsEmpty())
+		{
+			SenderName = FString::Printf(TEXT("Player %d"), TOPS->GetAssignedPlayerIndex());
+		}
 	}
-
-	// 서버에서 모든 클라이언트로 채팅 메시지 브로드캐스트
-	Multicast_BroadcastChatMessage(SenderName, Message);
+	
+	// 서버에 접속된 클라이언트들이 각각 멀티캐스트를 호출
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (ATOPlayerController* TargetPC = Cast<ATOPlayerController>(It->Get()))
+		{
+			TargetPC->Multicast_BroadcastChatMessage(SenderName, TrimmedMessage);
+		}
+	}
 }
 
 
 // 서버가 모든 클라이언트에게 채팅 메시지를 전파
 void ATOPlayerController::Multicast_BroadcastChatMessage_Implementation(const FString& SenderName, const FString& Message)
 {
-	if (APlayerController* LocalPC = GetWorld()->GetFirstPlayerController())
+	if (IsLocalController())
 	{
-		if (ATOGameState* GS = GetWorld()->GetGameState<ATOGameState>())
-		{
-			GS->Multicast_BroadcastChatMessage(SenderName, Message);
-		}
+		K2_AddChatMessageToUI(SenderName, Message);
 	}
 }
 
