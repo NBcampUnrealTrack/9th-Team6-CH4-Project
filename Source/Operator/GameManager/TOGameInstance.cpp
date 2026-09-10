@@ -34,7 +34,7 @@ void UTOGameInstance::Init()
     }
 }
 
-void UTOGameInstance::CreateMySession()
+void UTOGameInstance::CreateMySession(const FString& Password)
 {
     if (!SessionInterface.IsValid())
     {
@@ -42,7 +42,6 @@ void UTOGameInstance::CreateMySession()
     }
 
     auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
-
     if (ExistingSession != nullptr)
     {
         SessionInterface->DestroySession(NAME_GameSession);
@@ -50,22 +49,40 @@ void UTOGameInstance::CreateMySession()
 
     FOnlineSessionSettings SessionSettings;
 
-    // Steam 인터넷 세션
     SessionSettings.bIsLANMatch = false;
-
     SessionSettings.NumPublicConnections = 4;
     SessionSettings.bAllowJoinInProgress = true;
     SessionSettings.bShouldAdvertise = true;
     SessionSettings.bUsesPresence = true;
     SessionSettings.bUseLobbiesIfAvailable = true;
 
-    SessionSettings.Set(
-        FName(TEXT("MATCH_TYPE")),
-        FString(TEXT("FreeForAll")),
-        EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
-    );
+    // 비밀번호 존재 여부에 따른 퍼블릭/프라이빗 분기
+    if (!Password.IsEmpty())
+    {
+        SessionSettings.Set(
+            FName(TEXT("ROOM_PASSWORD")),
+            Password,
+            EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
+        );
 
-    UE_LOG(LogTemp, Log, TEXT("Creating Steam Session..."));
+        SessionSettings.Set(
+            FName(TEXT("MATCH_TYPE")),
+            FString(TEXT("Private")),
+            EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
+        );
+
+        UE_LOG(LogTemp, Log, TEXT("Creating Private Steam Session with Password..."));
+    }
+    else
+    {
+        SessionSettings.Set(
+            FName(TEXT("MATCH_TYPE")),
+            FString(TEXT("Public")),
+            EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
+        );
+
+        UE_LOG(LogTemp, Log, TEXT("Creating Public Steam Session..."));
+    }
 
     SessionInterface->CreateSession(
         0,
@@ -163,9 +180,9 @@ void UTOGameInstance::OnJoinSessionComplete(
     }
 }
 
-void UTOGameInstance::CreateRoom()
+void UTOGameInstance::CreateRoom(const FString& Password)
 {
-    CreateMySession();
+    CreateMySession(Password);
 }
 
 void UTOGameInstance::JoinRoom()
@@ -177,41 +194,48 @@ void UTOGameInstance::FindRooms()
 {
     if (!SessionInterface.IsValid())
     {
-        UE_LOG(
-            LogTemp,
-            Warning,
-            TEXT("SessionInterface is invalid.")
-        );
-
+        UE_LOG(LogTemp, Warning, TEXT("SessionInterface is invalid."));
         return;
     }
 
-    SessionSearch = MakeShareable(
-        new FOnlineSessionSearch()
-    );
-
+    SessionSearch = MakeShared<FOnlineSessionSearch>();
     SessionSearch->MaxSearchResults = 100;
-
-    // Steam 인터넷 검색
     SessionSearch->bIsLanQuery = false;
 
-    // Steam Presence 세션 검색
     SessionSearch->QuerySettings.Set(
         FName(TEXT("SEARCH_PRESENCE")),
         true,
         EOnlineComparisonOp::Equals
     );
 
-    UE_LOG(
-        LogTemp,
-        Log,
-        TEXT("Searching for Steam Sessions...")
+    UE_LOG(LogTemp, Log, TEXT("Searching for Public Steam Sessions..."));
+
+    SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
+}
+
+void UTOGameInstance::FindPrivateRooms(const FString& SearchPassword)
+{
+    if (!SessionInterface.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SessionInterface is invalid."));
+        return;
+    }
+
+    TargetPassword = SearchPassword;
+
+    SessionSearch = MakeShared<FOnlineSessionSearch>();
+    SessionSearch->MaxSearchResults = 100;
+    SessionSearch->bIsLanQuery = false;
+
+    SessionSearch->QuerySettings.Set(
+        FName(TEXT("SEARCH_PRESENCE")),
+        true,
+        EOnlineComparisonOp::Equals
     );
 
-    SessionInterface->FindSessions(
-        0,
-        SessionSearch.ToSharedRef()
-    );
+    UE_LOG(LogTemp, Log, TEXT("Searching for Private Steam Sessions with Password..."));
+
+    SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
 }
 
 void UTOGameInstance::OnFindSessionsComplete(
@@ -253,7 +277,6 @@ void UTOGameInstance::OnFindSessionsComplete(
         );
     }
 
-    // 블루프린트에 검색 완료 알림
     OnRoomsFound.Broadcast();
 }
 
