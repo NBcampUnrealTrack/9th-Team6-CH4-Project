@@ -27,6 +27,38 @@ void ATOCharacter::BeginPlay()
 void ATOCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (IsLocallyControlled())
+	{
+		const FRotator ControlRot = GetControlRotation();
+		const FRotator ActorRot = GetActorRotation();
+		const FRotator DeltaRot = (ControlRot - ActorRot).GetNormalized();
+
+		// Clamping Yaw [-70, 70] and Pitch [-40, 30] for natural head rotation
+		const float TargetYaw = FMath::Clamp(DeltaRot.Yaw, -70.0f, 70.0f);
+		// Invert pitch: looking down yields negative pitch, but mesh Component Space Roll needs positive rotation to tilt head down
+		const float TargetPitch = -FMath::Clamp(DeltaRot.Pitch, -40.0f, 30.0f);
+		const FRotator TargetHeadRot(TargetPitch, TargetYaw, 0.0f);
+
+		HeadRotation = FMath::RInterpTo(HeadRotation, TargetHeadRot, DeltaTime, 12.0f);
+
+		if (!HasAuthority())
+		{
+			if (!ReplicatedHeadRotation.Equals(TargetHeadRot, 1.0f))
+			{
+				ReplicatedHeadRotation = TargetHeadRot;
+				Server_UpdateHeadRotation(TargetHeadRot);
+			}
+		}
+		else
+		{
+			ReplicatedHeadRotation = TargetHeadRot;
+		}
+	}
+	else
+	{
+		HeadRotation = FMath::RInterpTo(HeadRotation, ReplicatedHeadRotation, DeltaTime, 12.0f);
+	}
 }
 
 void ATOCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -58,6 +90,7 @@ void ATOCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ATOCharacter, bIsSeated);
+	DOREPLIFETIME_CONDITION(ATOCharacter, ReplicatedHeadRotation, COND_SkipOwner);
 }
 
 void ATOCharacter::SetupLeaderPoseComponents()
@@ -237,4 +270,9 @@ void ATOCharacter::Multicast_PlayEmote_Implementation(ECharacterEmoteState Emote
 	{
 		AnimInst->Montage_Play(TargetMontage);
 	}
+}
+
+void ATOCharacter::Server_UpdateHeadRotation_Implementation(const FRotator& NewHeadRotation)
+{
+	ReplicatedHeadRotation = NewHeadRotation;
 }

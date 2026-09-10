@@ -120,4 +120,21 @@ public:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayEmote(ECharacterEmoteState EmoteState);
+
+	// =========================================================================
+	// Head Look-At (Camera Tracking)
+	// =========================================================================
+public:
+	UPROPERTY(BlueprintReadOnly, Category = "Operator|Animation")
+	FRotator HeadRotation = FRotator::ZeroRotator;
+
+	UFUNCTION(BlueprintCallable, Category = "Operator|Animation")
+	FRotator GetHeadRotation() const { return HeadRotation; }
+
+protected:
+	UPROPERTY(Replicated)
+	FRotator ReplicatedHeadRotation = FRotator::ZeroRotator;
+
+	UFUNCTION(Server, Unreliable)
+	void Server_UpdateHeadRotation(const FRotator& NewHeadRotation);
 };
