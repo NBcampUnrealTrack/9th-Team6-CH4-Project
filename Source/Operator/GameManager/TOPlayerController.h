@@ -86,6 +86,13 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
 	void K2_ShowCorrectNotice(int32 WinnerPlayerIndex);
 
+	// 메인 위젯 갱신 요청
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_UpdateMainUI();
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
+	void K2_UpdateMainUI();
+	
 	// ------------------- UI - Class & Instance 파트 -----------------------------
 protected:
 	

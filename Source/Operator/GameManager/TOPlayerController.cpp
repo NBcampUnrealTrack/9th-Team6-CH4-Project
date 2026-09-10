@@ -98,6 +98,14 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 	}
 }
 
+void ATOPlayerController::Multicast_UpdateMainUI_Implementation()
+{
+	if (IsLocalController())
+	{
+		K2_UpdateMainUI();
+	}
+}
+
 void ATOPlayerController::Multicast_ShowCorrectNotice_Implementation(int32 WinnerPlayerIndex)
 {
 	// 각 클라이언트 로컬에서 블루프린트 이벤트 호출
