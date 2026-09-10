@@ -49,4 +49,22 @@ protected:
 	// [신규 추가] 플레이어 누적 점수
 	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "TO|PlayerState")
 	int32 PlayerScore = 0;
+
+// --------------------------닉네임 파트 --------------------------------
+public:
+	// 동기화될 닉네임 변수 (서버에서 변경 시 OnRep_PlayerNameString 호출)
+	UPROPERTY(ReplicatedUsing = OnRep_PlayerNameString, BlueprintReadOnly, Category = "TO|PlayerState")
+	FString PlayerNameString;
+
+	// 클라이언트가 서버로 닉네임을 전송하는 Server RPC
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "TO|PlayerState")
+	void Server_SetPlayerName(const FString& NewName);
+
+	// 닉네임이 동기화될 때 클라이언트에서 호출될 함수 (UI/머리 위 닉네임 갱신용)
+	UFUNCTION()
+	void OnRep_PlayerNameString();
+
+	// 닉네임 Getter
+	UFUNCTION(BlueprintCallable, Category = "TO|PlayerState")
+	FString GetCustomPlayerName() const { return PlayerNameString; }
 };
