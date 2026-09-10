@@ -85,6 +85,7 @@ void ATOGameMode::PostLogin(APlayerController* NewPlayer)
                 TOPS->bIsReadyToPlay = false; // 기본 Unready
         }
     }
+    TOPC->Multicast_UpdateMainUI();
     BroadcastLobbyState();
     Super::PostLogin(NewPlayer);
 }
@@ -279,6 +280,7 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
                 {
                     TOPS->AddScorePoints(1);
                 }
+                TOPC->Multicast_UpdateMainUI();
                 // 모든 클라이언트 화면에 브로드캐스트
                 TOPC->Multicast_ShowCorrectNotice(WinnerIndex);
                 break;
