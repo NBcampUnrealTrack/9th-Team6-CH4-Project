@@ -3,8 +3,11 @@
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
 #include "Interfaces/OnlineSessionInterface.h"
+#include "OnlineSessionSettings.h"
+#include "Containers/Ticker.h"
 
 class FOnlineSessionSearch;
+class UUserWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRoomsFound);
 
@@ -19,6 +22,7 @@ public:
     UTOGameInstance();
 
     virtual void Init() override;
+    virtual void Shutdown() override;
 
     UPROPERTY(BlueprintAssignable, Category = "Session")
     FOnRoomsFound OnRoomsFound;
@@ -32,12 +36,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Session")
     int32 GetFoundRoomPlayerCount(int32 Index) const;
     
-    // 비밀번호 기본값(= TEXT(""))을 주어 기존 호출 코드가 깨지지 않게 방어
+    // 방 생성 (비밀번호 및 방 이름 지원)
     UFUNCTION(BlueprintCallable, Category = "Session")
-    void CreateMySession(const FString& Password = TEXT(""));
+    void CreateMySession(const FString& Password = TEXT(""), const FString& InRoomName = TEXT(""));
 
     UFUNCTION(BlueprintCallable, Category = "Session")
-    void CreateRoom(const FString& Password = TEXT(""));
+    void CreateRoom(const FString& Password = TEXT(""), const FString& InRoomName = TEXT(""));
     
     UFUNCTION(BlueprintCallable, Category = "Session")
     void JoinMySession();
@@ -49,9 +53,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Session")
     void FindRooms();
 
-    // 비공개 방 검색 (비밀번호 입력받음)
+    // 비공개 방 검색 (비밀번호 및 방 이름 지원)
     UFUNCTION(BlueprintCallable, Category = "Session")
-    void FindPrivateRooms(const FString& SearchPassword);
+    void FindPrivateRooms(const FString& SearchPassword, const FString& SearchRoomName = TEXT(""));
     
     UFUNCTION(BlueprintCallable, Category = "Session")
     void JoinFoundSession(int32 Index);
@@ -59,14 +63,30 @@ public:
     // IP 직접 접속 (하마치 / LAN 테스트용)
     UFUNCTION(BlueprintCallable, Category = "Session")
     void JoinServerByIP(const FString& IPAddress);
+
+    // WBP_JoinRoomMenu UI 버튼 자동 바인딩 핸들러
+    UFUNCTION()
+    void OnPrivateJoinButtonClicked();
+
+    UFUNCTION()
+    void OnRefreshServerClicked();
+
+    UFUNCTION()
+    void OnPublicSearchButtonClicked();
+
+    FString GetBestHostIP() const;
     
     // =========================================================================
-    // Customization Selection Data
+    // Customization & Session Info
     // =========================================================================
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|PlayerInfo")
     FString PlayerName = TEXT("Player");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Session")
+    FString RoomName = TEXT("");
     
     void SetPlayerName(FString& InMyPlayerName) { PlayerName = InMyPlayerName; };
+    void SetPlayerName(const FString& InMyPlayerName) { PlayerName = InMyPlayerName; };
     FString GetPlayerName() { return PlayerName; }
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
@@ -82,8 +102,17 @@ protected:
     IOnlineSessionPtr SessionInterface;
 
     TSharedPtr<FOnlineSessionSearch> SessionSearch;
+    FOnlineSessionSearchResult LastJoinedSearchResult;
     
     FString TargetPassword;
+    FString TargetRoomName;
+    bool bIsSearchingPrivate = false;
+
+    FTSTicker::FDelegateHandle TickerHandle;
+    TWeakObjectPtr<UUserWidget> BoundJoinMenu;
+
+    bool TickWidgetBindings(float DeltaTime);
+    UUserWidget* FindActiveWidget(const FString& ClassSubstr) const;
     
     void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
     void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
