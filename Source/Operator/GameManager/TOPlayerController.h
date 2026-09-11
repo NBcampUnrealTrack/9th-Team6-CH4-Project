@@ -18,9 +18,12 @@ public:
 	ATOPlayerController();
 
 	virtual void BeginPlay() override;
+	virtual void OnPossess(APawn* InPawn) override;
+	virtual void AcknowledgePossession(APawn* P) override;
 
 	// 변수 네트워크 복제(Replication) 등록을 위한 함수
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 
 	// 플레이어에게 할당된 고유 인덱스 번호 (네트워크 복제됨)
 	// 사라지면 안되는 정보이기 때문에 TOTypes.h의 구조체 사용 X
@@ -133,6 +136,7 @@ protected:
 
 	virtual void InitPlayerState() override;
 
+public:
 	bool bHasCachedCustomization = false;
 	int32 CachedHairIndex = 0;
 	int32 CachedTopIndex = 0;
@@ -140,8 +144,9 @@ protected:
 
 	bool bHasCachedPlayerName = false;
 	FString CachedPlayerName;
-	
+
 	// -----------------------인게임 채팅 관련 파트 -----------------------------
+
 public:
 	//  채팅 전송 (Client -> Server)
 	UFUNCTION(Server, BlueprintCallable, Reliable)

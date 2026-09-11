@@ -6,6 +6,8 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
+#include "Components/ScrollBox.h"
+#include "Components/TextBlock.h"
 #include "UObject/UObjectIterator.h"
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
@@ -191,9 +193,38 @@ static bool IsIPv4Address(const FString& Str)
     return true;
 }
 
+void UTOGameInstance::UpdatePlayerNameFromActiveMenu()
+{
+    if (UUserWidget* JoinMenu = FindActiveWidget(TEXT("WBP_JoinRoomMenu")))
+    {
+        if (UEditableTextBox* Box = Cast<UEditableTextBox>(JoinMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+        {
+            FString InputPName = Box->GetText().ToString().TrimStartAndEnd();
+            if (!InputPName.IsEmpty())
+            {
+                PlayerName = InputPName;
+                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Updated PlayerName from JoinMenu: %s"), *PlayerName);
+            }
+        }
+    }
+    if (UUserWidget* CreateMenu = FindActiveWidget(TEXT("WBP_CreateRoomMenu")))
+    {
+        if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+        {
+            FString InputPName = Box->GetText().ToString().TrimStartAndEnd();
+            if (!InputPName.IsEmpty())
+            {
+                PlayerName = InputPName;
+                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Updated PlayerName from CreateMenu: %s"), *PlayerName);
+            }
+        }
+    }
+}
+
 void UTOGameInstance::OnPrivateJoinButtonClicked()
 {
     UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] OnPrivateJoinButtonClicked triggered!"));
+    UpdatePlayerNameFromActiveMenu();
 
     UUserWidget* JoinMenu = FindActiveWidget(TEXT("WBP_JoinRoomMenu"));
     if (!JoinMenu)
@@ -251,6 +282,8 @@ void UTOGameInstance::OnPrivateJoinButtonClicked()
 
 void UTOGameInstance::CreateMySession(const FString& Password, const FString& InRoomName)
 {
+    UpdatePlayerNameFromActiveMenu();
+
     if (!SessionInterface.IsValid())
     {
         UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] SessionInterface is invalid, falling back to direct ServerTravel."));
@@ -511,6 +544,8 @@ void UTOGameInstance::JoinRoom()
 
 void UTOGameInstance::FindRooms()
 {
+    UpdatePlayerNameFromActiveMenu();
+
     if (!SessionInterface.IsValid())
     {
         UE_LOG(LogTemp, Warning, TEXT("SessionInterface is invalid."));
@@ -534,11 +569,14 @@ void UTOGameInstance::FindRooms()
 
 void UTOGameInstance::FindPrivateRooms(const FString& SearchPassword, const FString& SearchRoomName)
 {
+    UpdatePlayerNameFromActiveMenu();
+
     if (!SessionInterface.IsValid())
     {
         UE_LOG(LogTemp, Warning, TEXT("SessionInterface is invalid."));
         return;
     }
+
 
     bIsSearchingPrivate = true;
     TargetPassword = SearchPassword;
@@ -683,7 +721,70 @@ void UTOGameInstance::OnFindSessionsComplete(
         }
     }
 
+    // UI Scroll_ServerList에 검색된 공개 방 목록 직접 등록
+    PopulateServerList();
+
     OnRoomsFound.Broadcast();
+}
+
+void UTOGameInstance::PopulateServerList()
+{
+    UUserWidget* JoinMenu = FindActiveWidget(TEXT("WBP_JoinRoomMenu"));
+    if (!JoinMenu)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] PopulateServerList: WBP_JoinRoomMenu not active."));
+        return;
+    }
+
+    UScrollBox* ScrollList = Cast<UScrollBox>(JoinMenu->GetWidgetFromName(FName(TEXT("Scroll_ServerList"))));
+    if (!ScrollList)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] PopulateServerList: Scroll_ServerList not found."));
+        return;
+    }
+
+    ScrollList->ClearChildren();
+
+    if (!SessionSearch.IsValid() || SessionSearch->SearchResults.Num() == 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] PopulateServerList: No sessions to display."));
+        return;
+    }
+
+    UClass* EntryClass = StaticLoadClass(UUserWidget::StaticClass(), nullptr, TEXT("/Game/UI/SubWidget/WBP_ServerEntry.WBP_ServerEntry_C"));
+    if (!EntryClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] PopulateServerList: Failed to load WBP_ServerEntry class!"));
+        return;
+    }
+
+    for (int32 i = 0; i < SessionSearch->SearchResults.Num(); ++i)
+    {
+        UUserWidget* EntryWidget = CreateWidget<UUserWidget>(this, EntryClass);
+        if (!EntryWidget) continue;
+
+        // 1. SessionIndex 프로퍼티 설정
+        if (FIntProperty* Prop = CastField<FIntProperty>(EntryWidget->GetClass()->FindPropertyByName(FName(TEXT("SessionIndex")))))
+        {
+            Prop->SetPropertyValue_InContainer(EntryWidget, i);
+        }
+
+        // 2. 방 제목 텍스트 설정
+        if (UTextBlock* NameText = Cast<UTextBlock>(EntryWidget->GetWidgetFromName(FName(TEXT("Text_ServerName")))))
+        {
+            NameText->SetText(FText::FromString(GetFoundRoomName(i)));
+        }
+
+        // 3. 인원 수 텍스트 설정
+        if (UTextBlock* CountText = Cast<UTextBlock>(EntryWidget->GetWidgetFromName(FName(TEXT("Text_PlayerCount")))))
+        {
+            CountText->SetText(FText::FromString(FString::Printf(TEXT("%d / 6"), GetFoundRoomPlayerCount(i))));
+        }
+
+        // 4. ScrollList에 엔트리 추가
+        ScrollList->AddChild(EntryWidget);
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Added server entry [%d]: '%s'"), i, *GetFoundRoomName(i));
+    }
 }
 
 void UTOGameInstance::JoinFoundSession(int32 Index)
@@ -819,12 +920,15 @@ int32 UTOGameInstance::GetFoundRoomPlayerCount(int32 Index) const
 
 void UTOGameInstance::JoinServerByIP(const FString& IPAddress)
 {
+    UpdatePlayerNameFromActiveMenu();
+
     FString CleanAddress = IPAddress.TrimStartAndEnd();
     if (CleanAddress.IsEmpty())
     {
         UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] JoinServerByIP: IP Address is empty."));
         return;
     }
+
 
     if (!CleanAddress.Contains(TEXT(":")))
     {

@@ -29,6 +29,12 @@ void ATOPlayerController::BeginPlay()
 	{
 		Server_SetPlayerName(TOGI->GetPlayerName());
 		Server_SetCustomization(TOGI->SelectedHairIndex, TOGI->SelectedTopIndex, TOGI->SelectedBottomIndex);
+
+		if (ATOCharacter* LocalChar = Cast<ATOCharacter>(GetPawn()))
+		{
+			LocalChar->ApplyCustomization(TOGI->SelectedHairIndex, TOGI->SelectedTopIndex, TOGI->SelectedBottomIndex);
+			LocalChar->UpdateNameTagWidget(TOGI->GetPlayerName());
+		}
 	}
 
 	// Slate의 기본 Tab 키 UI 네비게이션을 비활성화하여 Tab 키가 항상 게임/컨트롤러 입력으로 전달되도록 설정
@@ -55,6 +61,56 @@ void ATOPlayerController::BeginPlay()
 	// 초기 HUD 상태(Visible) 및 Input Mode(GameAndUI) 명시적 초기화
 	SetHUDVisible(true);
 }
+
+void ATOPlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+
+	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+	{
+		if (bHasCachedPlayerName)
+		{
+			TOPS->SetPlayerNameString(CachedPlayerName);
+		}
+	}
+
+	if (ATOCharacter* TOChar = Cast<ATOCharacter>(InPawn))
+	{
+		if (bHasCachedCustomization)
+		{
+			TOChar->ApplyCustomization(CachedHairIndex, CachedTopIndex, CachedBottomIndex);
+		}
+		else if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+		{
+			TOChar->ApplyCustomization(TOPS->SelectedHairIndex, TOPS->SelectedTopIndex, TOPS->SelectedBottomIndex);
+		}
+
+		if (bHasCachedPlayerName)
+		{
+			TOChar->UpdateNameTagWidget(CachedPlayerName);
+		}
+		else if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+		{
+			TOChar->UpdateNameTagWidget(TOPS->GetCustomPlayerName());
+		}
+	}
+}
+
+void ATOPlayerController::AcknowledgePossession(APawn* P)
+{
+	Super::AcknowledgePossession(P);
+
+	if (ATOCharacter* TOChar = Cast<ATOCharacter>(P))
+	{
+		if (UTOGameInstance* TOGI = Cast<UTOGameInstance>(GetGameInstance()))
+		{
+			TOChar->ApplyCustomization(TOGI->SelectedHairIndex, TOGI->SelectedTopIndex, TOGI->SelectedBottomIndex);
+			TOChar->UpdateNameTagWidget(TOGI->GetPlayerName());
+		}
+	}
+}
+
+
 
 
 // AssignedPlayerIndex 변수를 모든 클라이언트에 복제하도록 설정하는 로직
@@ -211,7 +267,12 @@ void ATOPlayerController::Server_SetPlayerName_Implementation(const FString& InP
 
 	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
 	{
-		TOPS->Server_SetPlayerName(InPlayerName);
+		TOPS->SetPlayerNameString(InPlayerName);
+	}
+
+	if (ATOCharacter* TOChar = Cast<ATOCharacter>(GetPawn()))
+	{
+		TOChar->UpdateNameTagWidget(InPlayerName);
 	}
 }
 
@@ -229,11 +290,12 @@ void ATOPlayerController::InitPlayerState()
 			}
 			if (bHasCachedPlayerName)
 			{
-				TOPS->Server_SetPlayerName(CachedPlayerName);
+				TOPS->SetPlayerNameString(CachedPlayerName);
 			}
 		}
 	}
 }
+
 
 
 // 제출 버튼 클릭 시 호출되는 통합 RPC 구현
