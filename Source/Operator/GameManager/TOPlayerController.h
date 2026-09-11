@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Framework/SlateDelegates.h"
 #include "../Operation/TOTypes.h"
 #include "TOPlayerController.generated.h"
 
@@ -159,5 +160,21 @@ public:
 	// 클라이언트 로컬 UI에 채팅 메시지 출력해주는 함수
 	UFUNCTION(BlueprintImplementableEvent, Category = "Chat")
 	void K2_AddChatMessageToUI(const FString& SenderName, const FString& Message);
+
+	// 채팅창 자동 포커스 및 상호작용
+	UFUNCTION(BlueprintCallable, Category = "Chat")
+	void FocusChatInput();
+
+	UFUNCTION(BlueprintCallable, Category = "Chat")
+	void UnfocusChatInput();
+
+	UFUNCTION(BlueprintCallable, Category = "Chat")
+	void SetupChatInputBox();
+
+	UFUNCTION(BlueprintCallable, Category = "Chat")
+	class UEditableTextBox* FindChatInputBox() const;
+
+	UFUNCTION()
+	void HandleChatCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
 };

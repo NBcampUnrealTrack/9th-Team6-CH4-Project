@@ -5,6 +5,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/EditableTextBox.h"
+#include "Blueprint/WidgetTree.h"
 #include "Framework/Application/NavigationConfig.h"
 #include "Framework/Application/SlateApplication.h"
 #include "InputKeyEventArgs.h"
@@ -45,20 +46,21 @@ void ATOPlayerController::BeginPlay()
 		FSlateApplication::Get().SetNavigationConfig(NavConfig);
 	}
 
-	// 레벨에 진입하면 WBP_InGameMain을 최상위 뷰포트에 생성하여 항시 유지
+	// 레벨에 진입하면 WBP_InGameMain을 최상위 뷰포트에 생성하여 항시 유지 (Z-Order 10으로 설정하여 서브 위젯 위에 표시)
 	if (InGameMainWidgetClass && !CurrentInGameMainWidget)
 	{
 		CurrentInGameMainWidget = CreateWidget<UUserWidget>(this, InGameMainWidgetClass);
 		if (CurrentInGameMainWidget)
 		{
-			CurrentInGameMainWidget->AddToViewport();
+			CurrentInGameMainWidget->AddToViewport(10);
+			SetupChatInputBox();
 		}
 	}
 
 	// 초기 상태는 로비(대기) 상태이므로 WBP_WaitingGame을 서브 위젯 영역에 생성
 	Client_OnGameEnded_Implementation();
 
-	// 초기 HUD 상태(Visible) 및 Input Mode(GameAndUI) 명시적 초기화
+	// 초기 HUD 상태(SelfHitTestInvisible) 및 Input Mode(GameAndUI) 명시적 초기화
 	SetHUDVisible(true);
 }
 
@@ -134,7 +136,7 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 {
 	bIsHUDVisible = bVisible;
 
-	const ESlateVisibility TargetVisibility = bIsHUDVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	const ESlateVisibility TargetVisibility = bIsHUDVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed;
 
 	if (CurrentInGameMainWidget)
 	{
@@ -152,8 +154,11 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 	{
 		// UI 상호작용 및 게임 입력을 동시에 받도록 설정
 		FInputModeGameAndUI InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		InputMode.SetHideCursorDuringCapture(false);
 		SetInputMode(InputMode);
+
+		SetupChatInputBox();
 	}
 	else
 	{
@@ -180,9 +185,24 @@ bool ATOPlayerController::InputKey(const FInputKeyEventArgs& Params)
 			}
 		}
 
-		if (!bIsTyping)
+		if (bIsTyping)
 		{
-			if (Params.Key == EKeys::Tab)
+			// 채팅 입력 중 ESC 키를 누르면 채팅창 포커스 해제
+			if (Params.Key == EKeys::Escape)
+			{
+				UnfocusChatInput();
+				return true;
+			}
+		}
+		else
+		{
+			// Enter 키 입력 시 즉시 채팅창 포커스 활성화
+			if (Params.Key == EKeys::Enter)
+			{
+				FocusChatInput();
+				return true;
+			}
+			else if (Params.Key == EKeys::Tab)
 			{
 				ToggleHUD();
 				return true;
@@ -333,13 +353,14 @@ void ATOPlayerController::Client_OnGameStarted_Implementation()
 		CurrentSubWidget = nullptr;
 	}
 	
-	// StartGame 위젯을 Viewport에 직접 생성하여 덮어 씌움
+	// StartGame 위젯을 Viewport에 직접 생성하여 덮어 씌움 (Z-Order 0: InGameMainWidget(10) 뒤에 배치)
 	if (StartGameWidgetClass)
 	{
 		CurrentSubWidget = CreateWidget<UUserWidget>(this, StartGameWidgetClass);
 		if (CurrentSubWidget)
 		{
-			CurrentSubWidget->AddToViewport(); 
+			CurrentSubWidget->AddToViewport(0); 
+			CurrentSubWidget->SetVisibility(bIsHUDVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 		}
 	}
 }
@@ -355,13 +376,14 @@ void ATOPlayerController::Client_OnGameEnded_Implementation()
 		CurrentSubWidget = nullptr;
 	}
 
-	// WaitingGame 위젯을 Viewport에 직접 생성하여 덮어 씌움
+	// WaitingGame 위젯을 Viewport에 직접 생성하여 덮어 씌움 (Z-Order 0: InGameMainWidget(10) 뒤에 배치)
 	if (WaitingGameWidgetClass)
 	{
 		CurrentSubWidget = CreateWidget<UUserWidget>(this, WaitingGameWidgetClass);
 		if (CurrentSubWidget)
 		{
-			CurrentSubWidget->AddToViewport();
+			CurrentSubWidget->AddToViewport(0);
+			CurrentSubWidget->SetVisibility(bIsHUDVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 		}
 	}
 }
@@ -413,6 +435,115 @@ void ATOPlayerController::Multicast_BroadcastChatMessage_Implementation(const FS
 	if (IsLocalController())
 	{
 		K2_AddChatMessageToUI(SenderName, Message);
+	}
+}
+
+UEditableTextBox* ATOPlayerController::FindChatInputBox() const
+{
+	if (!CurrentInGameMainWidget) return nullptr;
+
+	TFunction<UEditableTextBox*(UUserWidget*)> SearchWidgetTree;
+	SearchWidgetTree = [&SearchWidgetTree](UUserWidget* InWidget) -> UEditableTextBox*
+	{
+		if (!InWidget || !InWidget->WidgetTree) return nullptr;
+
+		UEditableTextBox* Fallback = nullptr;
+		TArray<UWidget*> AllWidgets;
+		InWidget->WidgetTree->GetAllWidgets(AllWidgets);
+
+		for (UWidget* Widget : AllWidgets)
+		{
+			if (UEditableTextBox* Box = Cast<UEditableTextBox>(Widget))
+			{
+				const FString BoxName = Box->GetName().ToLower();
+				if (BoxName.Contains(TEXT("chat")) || BoxName.Contains(TEXT("msg")) || BoxName.Contains(TEXT("input")))
+				{
+					return Box;
+				}
+				if (!Fallback)
+				{
+					Fallback = Box;
+				}
+			}
+			else if (UUserWidget* ChildUserWidget = Cast<UUserWidget>(Widget))
+			{
+				if (UEditableTextBox* FoundInChild = SearchWidgetTree(ChildUserWidget))
+				{
+					return FoundInChild;
+				}
+			}
+		}
+		return Fallback;
+	};
+
+	return SearchWidgetTree(CurrentInGameMainWidget);
+}
+
+void ATOPlayerController::SetupChatInputBox()
+{
+	if (UEditableTextBox* ChatBox = FindChatInputBox())
+	{
+		ChatBox->SetVisibility(ESlateVisibility::Visible);
+		ChatBox->SetIsEnabled(true);
+		ChatBox->SetIsReadOnly(false);
+		ChatBox->OnTextCommitted.RemoveDynamic(this, &ATOPlayerController::HandleChatCommitted);
+		ChatBox->OnTextCommitted.AddDynamic(this, &ATOPlayerController::HandleChatCommitted);
+	}
+}
+
+void ATOPlayerController::FocusChatInput()
+{
+	SetupChatInputBox();
+
+	if (UEditableTextBox* ChatBox = FindChatInputBox())
+	{
+		ChatBox->SetVisibility(ESlateVisibility::Visible);
+		ChatBox->SetIsEnabled(true);
+		ChatBox->SetIsReadOnly(false);
+		ChatBox->SetUserFocus(this);
+		ChatBox->SetKeyboardFocus();
+
+		FInputModeGameAndUI InputMode;
+		InputMode.SetWidgetToFocus(ChatBox->TakeWidget());
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		InputMode.SetHideCursorDuringCapture(false);
+		SetInputMode(InputMode);
+	}
+}
+
+void ATOPlayerController::UnfocusChatInput()
+{
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::Cleared);
+	}
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetHideCursorDuringCapture(false);
+	SetInputMode(InputMode);
+}
+
+void ATOPlayerController::HandleChatCommitted(const FText& Text, ETextCommit::Type CommitMethod)
+{
+	if (CommitMethod == ETextCommit::OnEnter)
+	{
+		const FString Message = Text.ToString().TrimStartAndEnd();
+		if (!Message.IsEmpty())
+		{
+			Server_SendChatMessage(Message);
+		}
+
+		if (UEditableTextBox* ChatBox = FindChatInputBox())
+		{
+			ChatBox->SetText(FText::GetEmpty());
+		}
+
+		UnfocusChatInput();
+	}
+	else if (CommitMethod == ETextCommit::OnCleared)
+	{
+		UnfocusChatInput();
 	}
 }
 
