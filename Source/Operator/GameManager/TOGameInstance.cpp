@@ -4,6 +4,7 @@
 #include "SocketSubsystem.h"
 #include "IPAddress.h"
 #include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
 #include "Components/ScrollBox.h"
@@ -66,6 +67,7 @@ UUserWidget* UTOGameInstance::FindActiveWidget(const FString& ClassSubstr) const
     UWorld* CurrentWorld = GetWorld();
     if (!CurrentWorld) return nullptr;
 
+    UUserWidget* FallbackWidget = nullptr;
     for (TObjectIterator<UUserWidget> It; It; ++It)
     {
         UUserWidget* Widget = *It;
@@ -73,34 +75,64 @@ UUserWidget* UTOGameInstance::FindActiveWidget(const FString& ClassSubstr) const
         {
             if (Widget->GetClass()->GetName().Contains(ClassSubstr))
             {
-                return Widget;
+                if (Widget->IsInViewport())
+                {
+                    return Widget;
+                }
+                if (!FallbackWidget)
+                {
+                    FallbackWidget = Widget;
+                }
             }
         }
     }
-    return nullptr;
+    return FallbackWidget;
 }
 
 bool UTOGameInstance::TickWidgetBindings(float DeltaTime)
 {
     if (UUserWidget* JoinMenu = FindActiveWidget(TEXT("WBP_JoinRoomMenu")))
     {
+        // 1. 비공개 방 참가 버튼 자동 바인딩 ([Btn_CreateRoom], Btn_CreateRoom, Btn_Join 등)
+        UButton* TargetBtn = Cast<UButton>(JoinMenu->GetWidgetFromName(FName(TEXT("[Btn_CreateRoom]"))));
+        if (!TargetBtn)
+        {
+            TargetBtn = Cast<UButton>(JoinMenu->GetWidgetFromName(FName(TEXT("Btn_CreateRoom"))));
+        }
+        if (!TargetBtn)
+        {
+            TargetBtn = Cast<UButton>(JoinMenu->GetWidgetFromName(FName(TEXT("Btn_Join"))));
+        }
+        if (!TargetBtn && JoinMenu->WidgetTree)
+        {
+            TArray<UWidget*> AllWidgets;
+            JoinMenu->WidgetTree->GetAllWidgets(AllWidgets);
+            for (UWidget* W : AllWidgets)
+            {
+                if (UButton* B = Cast<UButton>(W))
+                {
+                    FString BName = B->GetName();
+                    if ((BName.Contains(TEXT("CreateRoom")) || BName.Contains(TEXT("Join"))) &&
+                        !BName.Contains(TEXT("Search")) && !BName.Contains(TEXT("Back")) && !BName.Contains(TEXT("Refresh")))
+                    {
+                        TargetBtn = B;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (TargetBtn && BoundPrivateJoinBtn.Get() != TargetBtn)
+        {
+            BoundPrivateJoinBtn = TargetBtn;
+            TargetBtn->OnClicked.RemoveDynamic(this, &UTOGameInstance::OnPrivateJoinButtonClicked);
+            TargetBtn->OnClicked.AddDynamic(this, &UTOGameInstance::OnPrivateJoinButtonClicked);
+            UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Successfully bound private join button '%s' on WBP_JoinRoomMenu."), *TargetBtn->GetName());
+        }
+
         if (BoundJoinMenu.Get() != JoinMenu)
         {
             BoundJoinMenu = JoinMenu;
-
-            // 1. 비공개 방 참가 버튼("Btn_CreateRoom" 또는 "Btn_Join") 자동 바인딩
-            UButton* TargetBtn = Cast<UButton>(JoinMenu->GetWidgetFromName(FName(TEXT("Btn_CreateRoom"))));
-            if (!TargetBtn)
-            {
-                TargetBtn = Cast<UButton>(JoinMenu->GetWidgetFromName(FName(TEXT("Btn_Join"))));
-            }
-
-            if (TargetBtn)
-            {
-                TargetBtn->OnClicked.RemoveDynamic(this, &UTOGameInstance::OnPrivateJoinButtonClicked);
-                TargetBtn->OnClicked.AddDynamic(this, &UTOGameInstance::OnPrivateJoinButtonClicked);
-                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Bound private join button on WBP_JoinRoomMenu."));
-            }
 
             // 2. 공개 방 검색(새로고침) 버튼("Btn_RefreshServer") 자동 바인딩
             if (UButton* RefreshBtn = Cast<UButton>(JoinMenu->GetWidgetFromName(FName(TEXT("Btn_RefreshServer")))))
@@ -259,22 +291,36 @@ void UTOGameInstance::OnPrivateJoinButtonClicked()
     UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Private Join - Player: %s, Room: %s, Password: %s"),
         *PlayerName, *InputRoomName, *InputPassword);
 
-    // IP 주소(하마치 가상 IP 등) 직접 입력 시 바로 접속
+    // 1. IP 주소(하마치 25.x.x.x 또는 LAN IP) 직접 입력 시 세션 검색을 거치지 않고 직접 즉시 접속
+    FString TargetIP = TEXT("");
     if (IsIPv4Address(InputRoomName))
+    {
+        TargetIP = InputRoomName;
+    }
+    else if (IsIPv4Address(InputPassword))
+    {
+        TargetIP = InputPassword;
+    }
+
+    if (!TargetIP.IsEmpty())
     {
         if (GEngine)
         {
             GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
-                FString::Printf(TEXT("IP 직접 접속 중: %s"), *InputRoomName));
+                FString::Printf(TEXT("호스트 IP 직접 접속 중: %s"), *TargetIP));
         }
-        JoinServerByIP(InputRoomName);
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Direct IP connection triggered to: %s"), *TargetIP);
+        JoinServerByIP(TargetIP);
         return;
     }
 
+    // 2. 일반 세션 검색 진행
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 4.f, FColor::Yellow,
-            FString::Printf(TEXT("비공개 방 검색 중... [%s]"), *InputRoomName));
+            FString::Printf(TEXT("비공개 방 검색 중... [방: %s, 비번: %s]"), 
+                InputRoomName.IsEmpty() ? TEXT("(전체)") : *InputRoomName,
+                InputPassword.IsEmpty() ? TEXT("(없음)") : *InputPassword));
     }
 
     FindPrivateRooms(InputPassword, InputRoomName);
@@ -357,12 +403,25 @@ void UTOGameInstance::CreateMySession(const FString& Password, const FString& In
         EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
     );
 
+    // 비밀번호 결정 (인자 -> WBP_CreateRoomMenu 위젯 순서로 탐색)
+    FString FinalPassword = Password;
+    if (FinalPassword.IsEmpty())
+    {
+        if (UUserWidget* CreateMenu = FindActiveWidget(TEXT("WBP_CreateRoomMenu")))
+        {
+            if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_Password")))))
+            {
+                FinalPassword = Box->GetText().ToString().TrimStartAndEnd();
+            }
+        }
+    }
+
     // 비밀번호 존재 여부에 따른 퍼블릭/프라이빗 분기
-    if (!Password.IsEmpty())
+    if (!FinalPassword.IsEmpty())
     {
         SessionSettings.Set(
             FName(TEXT("ROOM_PASSWORD")),
-            Password,
+            FinalPassword,
             EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
         );
 
@@ -372,7 +431,7 @@ void UTOGameInstance::CreateMySession(const FString& Password, const FString& In
             EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
         );
 
-        UE_LOG(LogTemp, Log, TEXT("Creating Private Session '%s' with Password..."), *FinalRoomName);
+        UE_LOG(LogTemp, Log, TEXT("Creating Private Session '%s' with Password '%s'..."), *FinalRoomName, *FinalPassword);
     }
     else
     {
@@ -475,7 +534,15 @@ void UTOGameInstance::OnJoinSessionComplete(
         // 1. SessionSettings에 호스트가 기록한 HOST_IP가 있는지 확인 (하마치 가상 IP 등)
         if (LastJoinedSearchResult.Session.SessionSettings.Get(FName(TEXT("HOST_IP")), AdvertisedIP) && !AdvertisedIP.IsEmpty())
         {
-            ConnectAddress = FString::Printf(TEXT("%s:7777"), *AdvertisedIP);
+            AdvertisedIP = AdvertisedIP.TrimStartAndEnd();
+            if (!AdvertisedIP.Contains(TEXT(":")))
+            {
+                ConnectAddress = FString::Printf(TEXT("%s:7777"), *AdvertisedIP);
+            }
+            else
+            {
+                ConnectAddress = AdvertisedIP;
+            }
             UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Using Advertised HOST_IP for travel: %s"), *ConnectAddress);
         }
         else
@@ -596,12 +663,12 @@ void UTOGameInstance::OnFindSessionsComplete(
     bool bWasSuccessful
 )
 {
-    if (!bWasSuccessful || !SessionSearch.IsValid())
+    if (!bWasSuccessful || !SessionSearch.IsValid() || SessionSearch->SearchResults.Num() == 0)
     {
         UE_LOG(
             LogTemp,
             Warning,
-            TEXT("Failed to find sessions.")
+            TEXT("Failed to find sessions or 0 sessions found.")
         );
 
         if (bIsSearchingPrivate)
@@ -609,17 +676,20 @@ void UTOGameInstance::OnFindSessionsComplete(
             bIsSearchingPrivate = false;
             if (GEngine)
             {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("방 검색 실패: 세션을 찾을 수 없습니다."));
+                GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, 
+                    TEXT("방을 찾지 못했습니다.\n[하마치 이용 시] '방 이름' 칸에 호스트의 하마치 IP(25.x.x.x)를 입력하면 즉시 접속됩니다!"));
             }
         }
         else
         {
             if (GEngine)
             {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("공개 방 검색 실패: 세션을 찾을 수 없습니다."));
+                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("현재 열려 있는 공개 방이 없습니다."));
             }
         }
 
+        PopulateServerList();
+        OnRoomsFound.Broadcast();
         return;
     }
 
@@ -661,6 +731,10 @@ void UTOGameInstance::OnFindSessionsComplete(
         bIsSearchingPrivate = false;
         int32 MatchIndex = -1;
 
+        FString CleanTargetPassword = TargetPassword.TrimStartAndEnd();
+        FString CleanTargetRoomName = TargetRoomName.TrimStartAndEnd();
+
+        // 1차 패스: 방 이름과 비밀번호가 모두 일치하는 세션 탐색
         for (int32 i = 0; i < Results.Num(); ++i)
         {
             const FOnlineSessionSearchResult& Result = Results[i];
@@ -668,13 +742,48 @@ void UTOGameInstance::OnFindSessionsComplete(
             Result.Session.SessionSettings.Get(FName(TEXT("ROOM_NAME")), RName);
             Result.Session.SessionSettings.Get(FName(TEXT("ROOM_PASSWORD")), Pass);
 
-            bool bNameMatches = TargetRoomName.IsEmpty() || RName.Equals(TargetRoomName, ESearchCase::IgnoreCase);
-            bool bPassMatches = Pass.Equals(TargetPassword, ESearchCase::CaseSensitive);
+            FString CleanPass = Pass.TrimStartAndEnd();
+            FString CleanRName = RName.TrimStartAndEnd();
+
+            bool bNameMatches = CleanTargetRoomName.IsEmpty() || 
+                                CleanRName.Equals(CleanTargetRoomName, ESearchCase::IgnoreCase) ||
+                                CleanRName.Contains(CleanTargetRoomName, ESearchCase::IgnoreCase);
+
+            bool bPassMatches = CleanTargetPassword.IsEmpty() || 
+                                CleanPass.Equals(CleanTargetPassword, ESearchCase::CaseSensitive);
 
             if (bNameMatches && bPassMatches)
             {
                 MatchIndex = i;
                 break;
+            }
+        }
+
+        // 2차 패스: 방 이름이 달라도 비밀번호가 일치하는 방이 있는 경우
+        if (MatchIndex == -1 && !CleanTargetPassword.IsEmpty())
+        {
+            for (int32 i = 0; i < Results.Num(); ++i)
+            {
+                const FOnlineSessionSearchResult& Result = Results[i];
+                FString Pass;
+                Result.Session.SessionSettings.Get(FName(TEXT("ROOM_PASSWORD")), Pass);
+                if (Pass.TrimStartAndEnd().Equals(CleanTargetPassword, ESearchCase::CaseSensitive))
+                {
+                    MatchIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // 3차 패스: 검색된 방이 1개뿐이고 비밀번호가 일치하거나 비어있는 경우
+        if (MatchIndex == -1 && Results.Num() == 1)
+        {
+            const FOnlineSessionSearchResult& Result = Results[0];
+            FString Pass;
+            Result.Session.SessionSettings.Get(FName(TEXT("ROOM_PASSWORD")), Pass);
+            if (CleanTargetPassword.IsEmpty() || Pass.TrimStartAndEnd().Equals(CleanTargetPassword, ESearchCase::CaseSensitive))
+            {
+                MatchIndex = 0;
             }
         }
 
@@ -694,7 +803,8 @@ void UTOGameInstance::OnFindSessionsComplete(
                 *TargetRoomName, *TargetPassword);
             if (GEngine)
             {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("일치하는 방 제목 또는 비밀번호의 방을 찾을 수 없습니다."));
+                GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, 
+                    TEXT("일치하는 방을 찾지 못했습니다.\n[하마치 이용 시] '방 이름' 칸에 호스트의 하마치 IP(25.x.x.x)를 입력하면 즉시 접속됩니다!"));
             }
             return;
         }
