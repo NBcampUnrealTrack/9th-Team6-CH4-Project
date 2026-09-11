@@ -362,9 +362,9 @@ void ATOGameMode::SetPlayerReady(ATOPlayerController* TargetPC, bool bReady)
 {
     if (!TargetPC || CurrentGamePhase != ETOGamePhase::WaitingToStart) return;
 
-    // 4명 미만일 때는 준비 안 됨
+    // 최소 인원 미만일 때는 준비 안 됨
     int32 CurrentPlayerCount = GetNumPlayers();
-    if (CurrentPlayerCount < 4) return;
+    if (CurrentPlayerCount < MinRequiredPlayers) return;
 
     // PlayerState의 Ready 상태 갱신
     if (ATOPlayerState* TOPS = TargetPC->GetPlayerState<ATOPlayerState>())
@@ -372,7 +372,7 @@ void ATOGameMode::SetPlayerReady(ATOPlayerController* TargetPC, bool bReady)
         TOPS->bIsReadyToPlay = bReady;
     }
 
-    // 4명 이상 접속 중이고 전원 Ready를 눌렀다면 게임 시작
+    // 최소 인원 이상 접속 중이고 전원 Ready를 눌렀다면 게임 시작
     if (CheckAllPlayersReady())
     {
         // 모든 클라이언트의 UI를 로비 -> 인게임 HUD로 전환 요청
@@ -414,7 +414,6 @@ bool ATOGameMode::CheckAllPlayersReady()
             }
         }
     }
-    const int32 MinRequiredPlayers = 4; 
 
     if (ValidPlayerCount < MinRequiredPlayers || ValidPlayerCount > 6)
     {
@@ -427,8 +426,8 @@ bool ATOGameMode::CheckAllPlayersReady()
 
 void ATOGameMode::BroadcastLobbyState()
 {
-    // 4명 이상 6명 이하일 때만 Ready 버튼에 불이 들어오도록 bool 설정
-    bool bCanEnableReady = (GetNumPlayers() >= 4 && GetNumPlayers() <= 6);
+    // 최소 인원 이상 6명 이하일 때만 Ready 버튼에 불이 들어오도록 bool 설정
+    bool bCanEnableReady = (GetNumPlayers() >= MinRequiredPlayers && GetNumPlayers() <= 6);
 
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {

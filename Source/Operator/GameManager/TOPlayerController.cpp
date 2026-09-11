@@ -5,6 +5,10 @@
 #include "Net/UnrealNetwork.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/EditableTextBox.h"
+#include "Framework/Application/NavigationConfig.h"
+#include "Framework/Application/SlateApplication.h"
+#include "InputKeyEventArgs.h"
+#include "../Character/TOCharacter.h"
 
 
 ATOPlayerController::ATOPlayerController()
@@ -19,6 +23,14 @@ void ATOPlayerController::BeginPlay()
 
 	if (!IsLocalController()) return;
 
+	// Slate의 기본 Tab 키 UI 네비게이션을 비활성화하여 Tab 키가 항상 게임/컨트롤러 입력으로 전달되도록 설정
+	if (FSlateApplication::IsInitialized())
+	{
+		TSharedRef<FNavigationConfig> NavConfig = MakeShared<FNavigationConfig>();
+		NavConfig->bTabNavigation = false;
+		FSlateApplication::Get().SetNavigationConfig(NavConfig);
+	}
+
 	// 레벨에 진입하면 WBP_InGameMain을 최상위 뷰포트에 생성하여 항시 유지
 	if (InGameMainWidgetClass && !CurrentInGameMainWidget)
 	{
@@ -26,12 +38,14 @@ void ATOPlayerController::BeginPlay()
 		if (CurrentInGameMainWidget)
 		{
 			CurrentInGameMainWidget->AddToViewport();
-			bShowMouseCursor = true;
 		}
 	}
 
 	// 초기 상태는 로비(대기) 상태이므로 WBP_WaitingGame을 서브 위젯 영역에 생성
 	Client_OnGameEnded_Implementation();
+
+	// 초기 HUD 상태(Visible) 및 Input Mode(GameAndUI) 명시적 초기화
+	SetHUDVisible(true);
 }
 
 
@@ -56,23 +70,22 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 {
 	bIsHUDVisible = bVisible;
 
-	if (!CurrentInGameMainWidget) return;
+	const ESlateVisibility TargetVisibility = bIsHUDVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+
+	if (CurrentInGameMainWidget)
+	{
+		CurrentInGameMainWidget->SetVisibility(TargetVisibility);
+	}
+
+	if (CurrentSubWidget)
+	{
+		CurrentSubWidget->SetVisibility(TargetVisibility);
+	}
+
+	bShowMouseCursor = bIsHUDVisible;
 
 	if (bIsHUDVisible)
 	{
-		if (CurrentInGameMainWidget)
-		{
-			CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Visible);
-		}
-		
-		if (CurrentSubWidget)
-		{
-			CurrentSubWidget->SetVisibility(ESlateVisibility::Visible);
-		}
-
-		// 마우스 커서 활성화
-		bShowMouseCursor = true;
-
 		// UI 상호작용 및 게임 입력을 동시에 받도록 설정
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
@@ -81,21 +94,47 @@ void ATOPlayerController::SetHUDVisible(bool bVisible)
 	else
 	{
 		// [HUD Off] 시야 조작 가능 + 마우스 커서 제거
-		if (CurrentInGameMainWidget)
-		{
-			CurrentInGameMainWidget->SetVisibility(ESlateVisibility::Collapsed);
-		}
-
-		if (CurrentSubWidget)
-		{
-			CurrentSubWidget->SetVisibility(ESlateVisibility::Collapsed);
-		}
-
-		bShowMouseCursor = false;
-
-		// 게임 전용 입력 모드로 전환 (마우스로 시야 조작 가능)
 		SetInputMode(FInputModeGameOnly());
 	}
+}
+
+bool ATOPlayerController::InputKey(const FInputKeyEventArgs& Params)
+{
+	if (Params.Event == IE_Pressed)
+	{
+		bool bIsTyping = false;
+		if (FSlateApplication::IsInitialized())
+		{
+			TSharedPtr<SWidget> FocusedWidget = FSlateApplication::Get().GetKeyboardFocusedWidget();
+			if (FocusedWidget.IsValid())
+			{
+				const FString TypeName = FocusedWidget->GetTypeAsString();
+				if (TypeName == TEXT("SEditableText") || TypeName == TEXT("SMultiLineEditableText") || TypeName == TEXT("SEditableTextBox"))
+				{
+					bIsTyping = true;
+				}
+			}
+		}
+
+		if (!bIsTyping)
+		{
+			if (Params.Key == EKeys::Tab)
+			{
+				ToggleHUD();
+				return true;
+			}
+			else if (Params.Key == EKeys::B)
+			{
+				if (ATOCharacter* Char = Cast<ATOCharacter>(GetPawn()))
+				{
+					Char->TogglePerspective();
+					return true;
+				}
+			}
+		}
+	}
+
+	return Super::InputKey(Params);
 }
 
 void ATOPlayerController::Multicast_UpdateMainUI_Implementation()

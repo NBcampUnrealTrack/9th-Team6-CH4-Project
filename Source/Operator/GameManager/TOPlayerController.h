@@ -38,6 +38,8 @@ public:
 	// HUD On/Off (Input Mode 및 마우스 커서 제어)
 	void SetHUDVisible(bool bVisible);
 
+	virtual bool InputKey(const struct FInputKeyEventArgs& Params) override;
+
 
 	// ------------------- Network - Server RPC 파트 -----------------------------
 

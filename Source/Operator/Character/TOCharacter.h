@@ -49,6 +49,16 @@ public:
 	void RequestToggleHUD();
 
 	// =========================================================================
+	// Camera Perspective (1st Person Seated / 3rd Person View)
+	// =========================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Camera")
+	bool bIsThirdPerson = false;
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Operator|Camera")
+	void TogglePerspective();
+	virtual void TogglePerspective_Implementation();
+
+	// =========================================================================
 	// Dynamic Modular Mesh Leader Pose Sync
 	// =========================================================================
 	UFUNCTION(BlueprintCallable, Category = "Operator|ModularMesh")

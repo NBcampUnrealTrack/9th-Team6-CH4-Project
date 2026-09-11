@@ -17,9 +17,9 @@ FTOFormulaData UTOCardDeckComponent::GenerateRoundFormula(int32 PlayerCount)
 		Alphabets = { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E"), TEXT("F") };
 	}
 
-	PlayerCount = FMath::Clamp(PlayerCount, 4, 6);
+	PlayerCount = FMath::Clamp(PlayerCount, 2, 6);
 	// 라운드 데이터를 만드는 함수
-	// 플레이어 수가 4미만이면 4로, 6초과면 6으로 안전하게 범위를 고정
+	// 플레이어 수가 2미만이면 2로, 6초과면 6으로 안전하게 범위를 고정
 	
 	//EvaluateFormula 연산자에 넘겨줄 카드 숫자 전용 TArray 변수 선언
 	TArray<int32> CardValues;

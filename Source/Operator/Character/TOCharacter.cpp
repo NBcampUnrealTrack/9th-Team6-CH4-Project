@@ -9,6 +9,8 @@
 #include "../GameManager/TOPlayerController.h"
 #include "EnhancedInputComponent.h"
 #include "InputCoreTypes.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
 
 ATOCharacter::ATOCharacter()
 {
@@ -75,6 +77,8 @@ void ATOCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 	// Tab 키 입력 시 PC->ToggleHUD() 호출 (기본 키 바인딩)
 	PlayerInputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ATOCharacter::RequestToggleHUD);
+	// B 키 입력 시 TogglePerspective() 호출 (시점 전환)
+	PlayerInputComponent->BindKey(EKeys::B, IE_Pressed, this, &ATOCharacter::TogglePerspective);
 }
 
 void ATOCharacter::RequestToggleHUD()
@@ -82,6 +86,52 @@ void ATOCharacter::RequestToggleHUD()
 	if (ATOPlayerController* PC = Cast<ATOPlayerController>(GetController()))
 	{
 		PC->ToggleHUD();
+	}
+}
+
+void ATOCharacter::TogglePerspective_Implementation()
+{
+	bIsThirdPerson = !bIsThirdPerson;
+
+	USpringArmComponent* SpringArm = FindComponentByClass<USpringArmComponent>();
+	if (SpringArm)
+	{
+		if (bIsThirdPerson)
+		{
+			SpringArm->TargetArmLength = 300.0f;
+			SpringArm->bUsePawnControlRotation = true;
+			SpringArm->bInheritPitch = true;
+			SpringArm->bInheritYaw = true;
+			SpringArm->bInheritRoll = false;
+
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			{
+				if (PC->PlayerCameraManager)
+				{
+					PC->PlayerCameraManager->ViewPitchMin = -80.0f;
+					PC->PlayerCameraManager->ViewPitchMax = 80.0f;
+					PC->PlayerCameraManager->ViewYawMin = 0.0f;
+					PC->PlayerCameraManager->ViewYawMax = 359.999f;
+				}
+			}
+		}
+		else
+		{
+			SpringArm->TargetArmLength = 0.0f;
+			SpringArm->bUsePawnControlRotation = true;
+
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			{
+				if (PC->PlayerCameraManager)
+				{
+					const float ActorYaw = GetActorRotation().Yaw;
+					PC->PlayerCameraManager->ViewPitchMin = -40.0f;
+					PC->PlayerCameraManager->ViewPitchMax = 30.0f;
+					PC->PlayerCameraManager->ViewYawMin = ActorYaw - 70.0f;
+					PC->PlayerCameraManager->ViewYawMax = ActorYaw + 70.0f;
+				}
+			}
+		}
 	}
 }
 

@@ -28,6 +28,14 @@ public:
 	// 선택한 오디오 출력 장치로 변경
 	UFUNCTION(BlueprintCallable, Category = "Audio|Device")
 	void SetAudioOutputDevice(FString DeviceIdOrName);
+
+	// 사용 가능한 오디오 입력(마이크) 장치 목록 가져오기
+	UFUNCTION(BlueprintCallable, Category = "Audio|Device")
+	void FetchAudioInputDevices();
+
+	// 블루프린트에서 입력 장치 목록 반환
+	UFUNCTION(BlueprintCallable, Category = "Audio|Device")
+	TArray<FString> GetAudioInputDevices() const { return CachedInputDeviceNames; }
 	
 	// --- 에셋 할당 변수 (에디터/블루프린트 설정용) ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio|Settings")
@@ -78,6 +86,8 @@ private:
 	
 	TArray<FString> CachedOutputDeviceNames;
 	TArray<FAudioOutputDeviceInfo> CachedOutputDevices;
+
+	TArray<FString> CachedInputDeviceNames;
 	
 	float MasterVolume = 1.0f;
 	float BGMVolume = 1.0f;

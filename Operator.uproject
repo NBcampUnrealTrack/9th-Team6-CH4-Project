@@ -26,7 +26,15 @@
 			"Enabled": false
 		},
 		{
+			"Name": "Niagara",
+			"Enabled": true
+		},
+		{
 			"Name": "NiagaraUIRenderer",
+			"Enabled": true
+		},
+		{
+			"Name": "AudioCapture",
 			"Enabled": true
 		}
 	]

@@ -1,13 +1,63 @@
 #include "AudioSettingSubsystem.h"
 #include "AudioCaptureCore.h"
+#include "AudioCaptureBlueprintLibrary.h"
 #include "AudioDeviceManager.h"
 #include "AudioMixerBlueprintLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Async/Async.h"
+#include "UObject/Stack.h"
+
+static void execSafeGetAvailableAudioInputDevices(UObject* Context, FFrame& Stack, RESULT_DECL)
+{
+	P_GET_OBJECT(const UObject, WorldContextObject);
+	FOnAudioInputDevicesObtained OnObtainDevicesEvent;
+	Stack.StepCompiledIn<FDelegateProperty>(&OnObtainDevicesEvent);
+	P_FINISH;
+	P_NATIVE_BEGIN;
+
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [OnObtainDevicesEvent]()
+	{
+		Audio::FAudioCapture AudioCapture;
+		TArray<Audio::FCaptureDeviceInfo> InputDevices;
+		AudioCapture.GetCaptureDevicesAvailable(InputDevices);
+
+		TArray<FAudioInputDeviceInfo> AvailableDeviceInfos;
+		for (const Audio::FCaptureDeviceInfo& Device : InputDevices)
+		{
+			AvailableDeviceInfos.Add(FAudioInputDeviceInfo(Device));
+		}
+
+		AsyncTask(ENamedThreads::GameThread, [OnObtainDevicesEvent, AvailableDeviceInfos = MoveTemp(AvailableDeviceInfos)]()
+		{
+			OnObtainDevicesEvent.ExecuteIfBound(AvailableDeviceInfos);
+		});
+	});
+	P_NATIVE_END;
+}
+
+static void HookAudioCaptureFunction()
+{
+	static bool bHooked = false;
+	if (!bHooked)
+	{
+		if (UClass* LibClass = UAudioCaptureBlueprintLibrary::StaticClass())
+		{
+			if (UFunction* Func = LibClass->FindFunctionByName(FName(TEXT("GetAvailableAudioInputDevices"))))
+			{
+				Func->SetNativeFunc(&execSafeGetAvailableAudioInputDevices);
+				bHooked = true;
+				UE_LOG(LogTemp, Log, TEXT("[AudioSettingSubsystem] Successfully hooked UAudioCaptureBlueprintLibrary::GetAvailableAudioInputDevices with GameThread dispatcher."));
+			}
+		}
+	}
+}
 
 void UAudioSettingSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+
+	HookAudioCaptureFunction();
 
 	// 에셋 경로를 C++에서 직접 로드 (블루프린트 할당 누락 방지)
 	MasterSoundMix = LoadObject<USoundMix>(nullptr, TEXT("/Game/Audio/Master_Mix.Master_Mix"));
@@ -86,13 +136,44 @@ void UAudioSettingSubsystem::FetchAudioOutputDevices()
 
 void UAudioSettingSubsystem::OnAudioOutputDevicesObtained(const TArray<FAudioOutputDeviceInfo>& AvailableDevices)
 {
-	CachedOutputDevices = AvailableDevices;
-	CachedOutputDeviceNames.Empty();
-
-	for (const FAudioOutputDeviceInfo& Device : AvailableDevices)
+	auto UpdateFunc = [this, AvailableDevices]()
 	{
-		CachedOutputDeviceNames.Add(Device.Name);
+		CachedOutputDevices = AvailableDevices;
+		CachedOutputDeviceNames.Empty();
+
+		for (const FAudioOutputDeviceInfo& Device : AvailableDevices)
+		{
+			CachedOutputDeviceNames.Add(Device.Name);
+		}
+	};
+
+	if (IsInGameThread())
+	{
+		UpdateFunc();
 	}
+	else
+	{
+		AsyncTask(ENamedThreads::GameThread, UpdateFunc);
+	}
+}
+
+void UAudioSettingSubsystem::FetchAudioInputDevices()
+{
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this]()
+	{
+		Audio::FAudioCapture AudioCapture;
+		TArray<Audio::FCaptureDeviceInfo> InputDevices;
+		AudioCapture.GetCaptureDevicesAvailable(InputDevices);
+
+		AsyncTask(ENamedThreads::GameThread, [this, InputDevices = MoveTemp(InputDevices)]()
+		{
+			CachedInputDeviceNames.Empty();
+			for (const Audio::FCaptureDeviceInfo& Device : InputDevices)
+			{
+				CachedInputDeviceNames.Add(Device.DeviceName);
+			}
+		});
+	});
 }
 
 void UAudioSettingSubsystem::SetAudioOutputDevice(FString DeviceIdOrName)

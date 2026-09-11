@@ -38,6 +38,11 @@ void UTOGameInstance::CreateMySession(const FString& Password)
 {
     if (!SessionInterface.IsValid())
     {
+        UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] SessionInterface is invalid, falling back to direct ServerTravel."));
+        if (UWorld* World = GetWorld())
+        {
+            World->ServerTravel(TEXT("/Game/Maps/DetectiveOffice/Levels/L_DetectiveOffice?listen"));
+        }
         return;
     }
 
@@ -49,12 +54,12 @@ void UTOGameInstance::CreateMySession(const FString& Password)
 
     FOnlineSessionSettings SessionSettings;
 
-    SessionSettings.bIsLANMatch = false;
-    SessionSettings.NumPublicConnections = 4;
+    SessionSettings.bIsLANMatch = true;
+    SessionSettings.NumPublicConnections = 6;
     SessionSettings.bAllowJoinInProgress = true;
     SessionSettings.bShouldAdvertise = true;
-    SessionSettings.bUsesPresence = true;
-    SessionSettings.bUseLobbiesIfAvailable = true;
+    SessionSettings.bUsesPresence = false;
+    SessionSettings.bUseLobbiesIfAvailable = false;
 
     // 비밀번호 존재 여부에 따른 퍼블릭/프라이빗 분기
     if (!Password.IsEmpty())
@@ -126,8 +131,15 @@ void UTOGameInstance::OnCreateSessionComplete(
         UE_LOG(
             LogTemp,
             Warning,
-            TEXT("Failed to Create Session!")
+            TEXT("Failed to Create Session! Falling back to ServerTravel anyway.")
         );
+
+        if (UWorld* World = GetWorld())
+        {
+            World->ServerTravel(
+                TEXT("/Game/Maps/DetectiveOffice/Levels/L_DetectiveOffice?listen")
+            );
+        }
     }
 }
 
@@ -200,7 +212,7 @@ void UTOGameInstance::FindRooms()
 
     SessionSearch = MakeShared<FOnlineSessionSearch>();
     SessionSearch->MaxSearchResults = 100;
-    SessionSearch->bIsLanQuery = false;
+    SessionSearch->bIsLanQuery = true;
 
     SessionSearch->QuerySettings.Set(
         FName(TEXT("SEARCH_PRESENCE")),
@@ -225,7 +237,7 @@ void UTOGameInstance::FindPrivateRooms(const FString& SearchPassword)
 
     SessionSearch = MakeShared<FOnlineSessionSearch>();
     SessionSearch->MaxSearchResults = 100;
-    SessionSearch->bIsLanQuery = false;
+    SessionSearch->bIsLanQuery = true;
 
     SessionSearch->QuerySettings.Set(
         FName(TEXT("SEARCH_PRESENCE")),
@@ -388,4 +400,30 @@ int32 UTOGameInstance::GetFoundRoomPlayerCount(int32 Index) const
         Result.Session.NumOpenPublicConnections;
 
     return CurrentPlayers;
+}
+
+void UTOGameInstance::JoinServerByIP(const FString& IPAddress)
+{
+    FString CleanAddress = IPAddress.TrimStartAndEnd();
+    if (CleanAddress.IsEmpty())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] JoinServerByIP: IP Address is empty."));
+        return;
+    }
+
+    if (!CleanAddress.Contains(TEXT(":")))
+    {
+        CleanAddress += TEXT(":7777");
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] JoinServerByIP: Connecting to %s"), *CleanAddress);
+
+    if (APlayerController* PC = GetFirstLocalPlayerController())
+    {
+        PC->ClientTravel(CleanAddress, ETravelType::TRAVEL_Absolute);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] JoinServerByIP: Failed to get FirstLocalPlayerController."));
+    }
 }

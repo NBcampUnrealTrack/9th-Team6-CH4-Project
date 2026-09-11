@@ -55,6 +55,10 @@ public:
     
     UFUNCTION(BlueprintCallable, Category = "Session")
     void JoinFoundSession(int32 Index);
+
+    // IP 직접 접속 (하마치 / LAN 테스트용)
+    UFUNCTION(BlueprintCallable, Category = "Session")
+    void JoinServerByIP(const FString& IPAddress);
     
     // =========================================================================
     // Customization Selection Data
