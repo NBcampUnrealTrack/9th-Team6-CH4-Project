@@ -7,6 +7,7 @@
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimInstance.h"
 #include "../GameManager/TOPlayerController.h"
+#include "../GameManager/TOPlayerState.h"
 #include "EnhancedInputComponent.h"
 #include "InputCoreTypes.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -24,6 +25,40 @@ void ATOCharacter::BeginPlay()
 
 	SetupLeaderPoseComponents();
 	UpdateSeatedStateVisuals();
+
+	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+	{
+		ApplyCustomization(TOPS->SelectedHairIndex, TOPS->SelectedTopIndex, TOPS->SelectedBottomIndex);
+	}
+}
+
+void ATOCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+	{
+		ApplyCustomization(TOPS->SelectedHairIndex, TOPS->SelectedTopIndex, TOPS->SelectedBottomIndex);
+	}
+}
+
+void ATOCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+	{
+		ApplyCustomization(TOPS->SelectedHairIndex, TOPS->SelectedTopIndex, TOPS->SelectedBottomIndex);
+	}
+}
+
+void ATOCharacter::ApplyCustomization_Implementation(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex)
+{
+	CurrentHairIndex = InHairIndex;
+	CurrentTopIndex = InTopIndex;
+	CurrentBottomIndex = InBottomIndex;
+
+	SetupLeaderPoseComponents();
 }
 
 void ATOCharacter::Tick(float DeltaTime)

@@ -34,6 +34,8 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void OnRep_PlayerState() override;
 
 public:	
 	virtual void Tick(float DeltaTime) override;
@@ -66,6 +68,22 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Operator|ModularMesh")
 	void RegisterModularMesh(USkeletalMeshComponent* ModularMesh);
+
+	// =========================================================================
+	// Customization (Modular Mesh)
+	// =========================================================================
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Operator|Customization")
+	int32 CurrentHairIndex = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Operator|Customization")
+	int32 CurrentTopIndex = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Operator|Customization")
+	int32 CurrentBottomIndex = 0;
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Operator|Customization")
+	void ApplyCustomization(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex);
+	virtual void ApplyCustomization_Implementation(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex);
 
 	// =========================================================================
 	// Seating State & Logic
