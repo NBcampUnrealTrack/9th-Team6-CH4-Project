@@ -4,6 +4,8 @@
 #include "GameFramework/PlayerState.h"
 #include "TOPlayerState.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPlayerCustomizationChanged, int32, HairIndex, int32, TopIndex, int32, BottomIndex);
+
 UCLASS()
 class OPERATOR_API ATOPlayerState : public APlayerState
 {
@@ -67,4 +69,34 @@ public:
 	// 닉네임 Getter
 	UFUNCTION(BlueprintCallable, Category = "TO|PlayerState")
 	FString GetCustomPlayerName() const { return PlayerNameString; }
+
+// -------------------------- 커스터마이징 동기화 파트 --------------------------
+public:
+	UPROPERTY(ReplicatedUsing = OnRep_Customization, BlueprintReadOnly, Category = "TO|Customization")
+	int32 SelectedHairIndex = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Customization, BlueprintReadOnly, Category = "TO|Customization")
+	int32 SelectedTopIndex = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Customization, BlueprintReadOnly, Category = "TO|Customization")
+	int32 SelectedBottomIndex = 0;
+
+	UPROPERTY(BlueprintAssignable, Category = "TO|Customization")
+	FOnPlayerCustomizationChanged OnPlayerCustomizationChanged;
+
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "TO|Customization")
+	void Server_SetCustomization(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex);
+
+	UFUNCTION()
+	void OnRep_Customization();
+
+	void SetCustomization(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "TO|Customization")
+	void GetCustomization(int32& OutHairIndex, int32& OutTopIndex, int32& OutBottomIndex) const
+	{
+		OutHairIndex = SelectedHairIndex;
+		OutTopIndex = SelectedTopIndex;
+		OutBottomIndex = SelectedBottomIndex;
+	}
 };

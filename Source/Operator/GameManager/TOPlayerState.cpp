@@ -1,5 +1,6 @@
 #include "TOPlayerState.h"
 #include "Net/UnrealNetwork.h"
+#include "../Character/TOCharacter.h"
 
 
 ATOPlayerState::ATOPlayerState()
@@ -8,6 +9,9 @@ ATOPlayerState::ATOPlayerState()
 	AssignedPlayerIndex = -1;
 	PlayerAlphabet = TEXT("");
 	PlayerScore = 0;
+	SelectedHairIndex = 0;
+	SelectedTopIndex = 0;
+	SelectedBottomIndex = 0;
 }
 
 
@@ -23,6 +27,10 @@ void ATOPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ATOPlayerState, PlayerAlphabet);
 	DOREPLIFETIME(ATOPlayerState, PlayerScore);
 	DOREPLIFETIME(ATOPlayerState, PlayerNameString);
+
+	DOREPLIFETIME(ATOPlayerState, SelectedHairIndex);
+	DOREPLIFETIME(ATOPlayerState, SelectedTopIndex);
+	DOREPLIFETIME(ATOPlayerState, SelectedBottomIndex);
 }
 
 
@@ -48,4 +56,39 @@ void ATOPlayerState::OnRep_PlayerNameString()
 {
 	// 캐릭터 머리 위 UI나 스코어보드 닉네임 갱신 로직이 들어갈 위치입니다.
 	UE_LOG(LogTemp, Log, TEXT("PlayerName Replicated: %s"), *PlayerNameString);
+}
+
+void ATOPlayerState::Server_SetCustomization_Implementation(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex)
+{
+	SetCustomization(InHairIndex, InTopIndex, InBottomIndex);
+}
+
+void ATOPlayerState::SetCustomization(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex)
+{
+	SelectedHairIndex = InHairIndex;
+	SelectedTopIndex = InTopIndex;
+	SelectedBottomIndex = InBottomIndex;
+
+	OnPlayerCustomizationChanged.Broadcast(SelectedHairIndex, SelectedTopIndex, SelectedBottomIndex);
+
+	if (APawn* TargetPawn = GetPawn())
+	{
+		if (ATOCharacter* Char = Cast<ATOCharacter>(TargetPawn))
+		{
+			Char->ApplyCustomization(SelectedHairIndex, SelectedTopIndex, SelectedBottomIndex);
+		}
+	}
+}
+
+void ATOPlayerState::OnRep_Customization()
+{
+	OnPlayerCustomizationChanged.Broadcast(SelectedHairIndex, SelectedTopIndex, SelectedBottomIndex);
+
+	if (APawn* TargetPawn = GetPawn())
+	{
+		if (ATOCharacter* Char = Cast<ATOCharacter>(TargetPawn))
+		{
+			Char->ApplyCustomization(SelectedHairIndex, SelectedTopIndex, SelectedBottomIndex);
+		}
+	}
 }

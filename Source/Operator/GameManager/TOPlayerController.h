@@ -51,6 +51,14 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "TO|Character")
 	void Server_SelectCharacter(int32 CharacterID);
 
+	// 커스터마이징 정보 서버 전송
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "TO|Customization")
+	void Server_SetCustomization(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex);
+
+	// 플레이어 닉네임 서버 전송
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "TO|PlayerInfo")
+	void Server_SetPlayerName(const FString& InPlayerName);
+
 	// 단일 제출 버튼 클릭 시 호출되는 통합 Server RPC (정답 제출 / 카드 유추 겸용)
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "TO|Network")
 	void Server_SubmitCurrentInput(const FTOGuessAllInputData& FormulaData, const FTOGuessSingleInputData& SingleGuessData);
@@ -122,6 +130,16 @@ protected:
 	
 	// 현재 HUD 표시 및 UI 입력 모드 상태 관리 플래그
 	bool bIsHUDVisible = true;
+
+	virtual void InitPlayerState() override;
+
+	bool bHasCachedCustomization = false;
+	int32 CachedHairIndex = 0;
+	int32 CachedTopIndex = 0;
+	int32 CachedBottomIndex = 0;
+
+	bool bHasCachedPlayerName = false;
+	FString CachedPlayerName;
 	
 	// -----------------------인게임 채팅 관련 파트 -----------------------------
 public:

@@ -9,6 +9,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "InputKeyEventArgs.h"
 #include "../Character/TOCharacter.h"
+#include "TOGameInstance.h"
 
 
 ATOPlayerController::ATOPlayerController()
@@ -22,6 +23,13 @@ void ATOPlayerController::BeginPlay()
 	Super::BeginPlay();
 
 	if (!IsLocalController()) return;
+
+	// GameInstance에서 닉네임과 커스터마이징 정보 읽어서 서버로 동기화 전송
+	if (UTOGameInstance* TOGI = Cast<UTOGameInstance>(GetGameInstance()))
+	{
+		Server_SetPlayerName(TOGI->GetPlayerName());
+		Server_SetCustomization(TOGI->SelectedHairIndex, TOGI->SelectedTopIndex, TOGI->SelectedBottomIndex);
+	}
 
 	// Slate의 기본 Tab 키 UI 네비게이션을 비활성화하여 Tab 키가 항상 게임/컨트롤러 입력으로 전달되도록 설정
 	if (FSlateApplication::IsInitialized())
@@ -176,6 +184,54 @@ void ATOPlayerController::Server_SelectCharacter_Implementation(int32 CharacterI
 	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
 	{
 		TOPS->SelectedCharacterID = CharacterID;
+	}
+}
+
+void ATOPlayerController::Server_SetCustomization_Implementation(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex)
+{
+	CachedHairIndex = InHairIndex;
+	CachedTopIndex = InTopIndex;
+	CachedBottomIndex = InBottomIndex;
+	bHasCachedCustomization = true;
+
+	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+	{
+		TOPS->SetCustomization(InHairIndex, InTopIndex, InBottomIndex);
+	}
+	if (ATOCharacter* TOChar = Cast<ATOCharacter>(GetPawn()))
+	{
+		TOChar->ApplyCustomization(InHairIndex, InTopIndex, InBottomIndex);
+	}
+}
+
+void ATOPlayerController::Server_SetPlayerName_Implementation(const FString& InPlayerName)
+{
+	CachedPlayerName = InPlayerName;
+	bHasCachedPlayerName = true;
+
+	if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+	{
+		TOPS->Server_SetPlayerName(InPlayerName);
+	}
+}
+
+void ATOPlayerController::InitPlayerState()
+{
+	Super::InitPlayerState();
+
+	if (HasAuthority())
+	{
+		if (ATOPlayerState* TOPS = GetPlayerState<ATOPlayerState>())
+		{
+			if (bHasCachedCustomization)
+			{
+				TOPS->SetCustomization(CachedHairIndex, CachedTopIndex, CachedBottomIndex);
+			}
+			if (bHasCachedPlayerName)
+			{
+				TOPS->Server_SetPlayerName(CachedPlayerName);
+			}
+		}
 	}
 }
 
