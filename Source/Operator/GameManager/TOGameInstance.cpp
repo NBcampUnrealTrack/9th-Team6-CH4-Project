@@ -367,30 +367,56 @@ void UTOGameInstance::CreateMySession(const FString& Password, const FString& In
         UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Advertising HOST_IP: %s"), *HostIP);
     }
 
-    // 방 제목 결정 (인자 -> 프로퍼티 -> WBP_CreateRoomMenu 위젯 순서로 탐색)
-    FString FinalRoomName = InRoomName;
-    if (FinalRoomName.IsEmpty())
+    // 방 제목 및 비밀번호 결정
+    // WBP_CreateRoomMenu 위젯이 활성화되어 있다면, 사용자가 UI에 직접 입력한 텍스트를 최우선(Ground Truth)으로 사용!
+    FString FinalRoomName = TEXT("");
+    FString FinalPassword = TEXT("");
+
+    if (UUserWidget* CreateMenu = FindActiveWidget(TEXT("WBP_CreateRoomMenu")))
     {
-        FinalRoomName = RoomName;
-    }
-    if (FinalRoomName.IsEmpty())
-    {
-        if (UUserWidget* CreateMenu = FindActiveWidget(TEXT("WBP_CreateRoomMenu")))
+        if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_RoomName")))))
         {
-            if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_RoomName")))))
+            FinalRoomName = Box->GetText().ToString().TrimStartAndEnd();
+        }
+        if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_Password")))))
+        {
+            FinalPassword = Box->GetText().ToString().TrimStartAndEnd();
+        }
+        if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+        {
+            FString PName = Box->GetText().ToString().TrimStartAndEnd();
+            if (!PName.IsEmpty())
             {
-                FinalRoomName = Box->GetText().ToString().TrimStartAndEnd();
-            }
-            if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
-            {
-                FString PName = Box->GetText().ToString().TrimStartAndEnd();
-                if (!PName.IsEmpty())
-                {
-                    PlayerName = PName;
-                }
+                PlayerName = PName;
             }
         }
     }
+
+    // 위젯에서 값을 가져오지 못한 경우 (위젯 외부 호출 등) 인자 및 프로퍼티로 폴백
+    if (FinalRoomName.IsEmpty())
+    {
+        FinalRoomName = InRoomName.TrimStartAndEnd();
+    }
+    if (FinalRoomName.IsEmpty())
+    {
+        FinalRoomName = RoomName.TrimStartAndEnd();
+    }
+    // 만약 InRoomName은 비어있고 Password만 들어왔는데 WBP_CreateRoomMenu가 없었다면:
+    // Blueprint에서 RoomName을 첫 번째 핀에 꽂았을 가능성이 높으므로 방 이름으로 폴백
+    if (FinalRoomName.IsEmpty() && !Password.TrimStartAndEnd().IsEmpty())
+    {
+        FinalRoomName = Password.TrimStartAndEnd();
+    }
+    else if (FinalPassword.IsEmpty())
+    {
+        // Password 인자가 FinalRoomName과 같지 않을 때만 비밀번호로 인정
+        FString CleanPass = Password.TrimStartAndEnd();
+        if (!CleanPass.IsEmpty() && !CleanPass.Equals(FinalRoomName, ESearchCase::CaseSensitive))
+        {
+            FinalPassword = CleanPass;
+        }
+    }
+
     if (FinalRoomName.IsEmpty())
     {
         FinalRoomName = PlayerName + TEXT("'s Room");
@@ -402,19 +428,6 @@ void UTOGameInstance::CreateMySession(const FString& Password, const FString& In
         FinalRoomName,
         EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
     );
-
-    // 비밀번호 결정 (인자 -> WBP_CreateRoomMenu 위젯 순서로 탐색)
-    FString FinalPassword = Password;
-    if (FinalPassword.IsEmpty())
-    {
-        if (UUserWidget* CreateMenu = FindActiveWidget(TEXT("WBP_CreateRoomMenu")))
-        {
-            if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_Password")))))
-            {
-                FinalPassword = Box->GetText().ToString().TrimStartAndEnd();
-            }
-        }
-    }
 
     // 비밀번호 존재 여부에 따른 퍼블릭/프라이빗 분기
     if (!FinalPassword.IsEmpty())
@@ -431,17 +444,23 @@ void UTOGameInstance::CreateMySession(const FString& Password, const FString& In
             EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
         );
 
-        UE_LOG(LogTemp, Log, TEXT("Creating Private Session '%s' with Password '%s'..."), *FinalRoomName, *FinalPassword);
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Creating Private Session '%s' with Password '%s'..."), *FinalRoomName, *FinalPassword);
     }
     else
     {
+        SessionSettings.Set(
+            FName(TEXT("ROOM_PASSWORD")),
+            FString(TEXT("")),
+            EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
+        );
+
         SessionSettings.Set(
             FName(TEXT("MATCH_TYPE")),
             FString(TEXT("Public")),
             EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
         );
 
-        UE_LOG(LogTemp, Log, TEXT("Creating Public Session '%s'..."), *FinalRoomName);
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Creating Public Session '%s'..."), *FinalRoomName);
     }
 
     SessionInterface->CreateSession(
@@ -586,15 +605,39 @@ void UTOGameInstance::OnJoinSessionComplete(
     }
     else
     {
+        FString Reason;
+        switch (Result)
+        {
+        case EOnJoinSessionCompleteResult::SessionIsFull:
+            Reason = TEXT("방이 가득 찼습니다.");
+            break;
+        case EOnJoinSessionCompleteResult::SessionDoesNotExist:
+            Reason = TEXT("존재하지 않는 방입니다.");
+            break;
+        case EOnJoinSessionCompleteResult::CouldNotRetrieveAddress:
+            Reason = TEXT("서버 주소를 가져올 수 없습니다.");
+            break;
+        case EOnJoinSessionCompleteResult::AlreadyInSession:
+            Reason = TEXT("이미 세션에 참가 중입니다.");
+            break;
+        case EOnJoinSessionCompleteResult::UnknownError:
+        default:
+            Reason = TEXT("알 수 없는 이유로 실패했습니다.");
+            break;
+        }
+
         UE_LOG(
             LogTemp,
             Warning,
-            TEXT("Failed to Join Session!")
+            TEXT("Failed to Join Session! Reason: %s (%d)"),
+            *Reason,
+            (int32)Result
         );
 
         if (GEngine)
         {
-            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("세션 참가 실패!"));
+            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red,
+                FString::Printf(TEXT("세션 참가 실패! 사유: %s"), *Reason));
         }
     }
 }
@@ -644,10 +687,20 @@ void UTOGameInstance::FindPrivateRooms(const FString& SearchPassword, const FStr
         return;
     }
 
+    FString CleanPass = SearchPassword.TrimStartAndEnd();
+    FString CleanRoom = SearchRoomName.TrimStartAndEnd();
+
+    // 비밀번호와 방 이름이 모두 비어있는 경우 (메뉴 탭 전환 시 불필요하게 자동 호출된 경우 등)
+    // 아무 방이나 자동 매칭되어 입장해버리는 것을 방지하고 사용자 입력을 대기합니다.
+    if (CleanPass.IsEmpty() && CleanRoom.IsEmpty())
+    {
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] FindPrivateRooms: Both Password and RoomName are empty. Waiting for user input."));
+        return;
+    }
 
     bIsSearchingPrivate = true;
-    TargetPassword = SearchPassword;
-    TargetRoomName = SearchRoomName;
+    TargetPassword = CleanPass;
+    TargetRoomName = CleanRoom;
 
     SessionSearch = MakeShared<FOnlineSessionSearch>();
     SessionSearch->MaxSearchResults = 100;
@@ -684,12 +737,13 @@ void UTOGameInstance::OnFindSessionsComplete(
         {
             if (GEngine)
             {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("현재 열려 있는 공개 방이 없습니다."));
+                GEngine->AddOnScreenDebugMessage(-1, 6.f, FColor::Yellow, 
+                    TEXT("네트워크에서 방을 발견하지 못했습니다. (0개 발견)\n[확인] 호스트가 방을 개설했는지 또는 방화벽/하마치 연결을 확인해주세요."));
             }
         }
 
-        PopulateServerList();
         OnRoomsFound.Broadcast();
+        PopulateServerList();
         return;
     }
 
@@ -745,12 +799,26 @@ void UTOGameInstance::OnFindSessionsComplete(
             FString CleanPass = Pass.TrimStartAndEnd();
             FString CleanRName = RName.TrimStartAndEnd();
 
-            bool bNameMatches = CleanTargetRoomName.IsEmpty() || 
-                                CleanRName.Equals(CleanTargetRoomName, ESearchCase::IgnoreCase) ||
-                                CleanRName.Contains(CleanTargetRoomName, ESearchCase::IgnoreCase);
+            bool bPassMatches = false;
+            if (!CleanPass.IsEmpty())
+            {
+                bPassMatches = !CleanTargetPassword.IsEmpty() && CleanPass.Equals(CleanTargetPassword, ESearchCase::CaseSensitive);
+            }
+            else
+            {
+                bPassMatches = CleanTargetPassword.IsEmpty();
+            }
 
-            bool bPassMatches = CleanTargetPassword.IsEmpty() || 
-                                CleanPass.Equals(CleanTargetPassword, ESearchCase::CaseSensitive);
+            bool bNameMatches = false;
+            if (!CleanTargetRoomName.IsEmpty())
+            {
+                bNameMatches = CleanRName.Equals(CleanTargetRoomName, ESearchCase::IgnoreCase) ||
+                               CleanRName.Contains(CleanTargetRoomName, ESearchCase::IgnoreCase);
+            }
+            else
+            {
+                bNameMatches = true;
+            }
 
             if (bNameMatches && bPassMatches)
             {
@@ -775,13 +843,13 @@ void UTOGameInstance::OnFindSessionsComplete(
             }
         }
 
-        // 3차 패스: 검색된 방이 1개뿐이고 비밀번호가 일치하거나 비어있는 경우
-        if (MatchIndex == -1 && Results.Num() == 1)
+        // 3차 패스: 검색된 방이 1개뿐이고 비밀번호가 일치하는 경우
+        if (MatchIndex == -1 && Results.Num() == 1 && !CleanTargetPassword.IsEmpty())
         {
             const FOnlineSessionSearchResult& Result = Results[0];
             FString Pass;
             Result.Session.SessionSettings.Get(FName(TEXT("ROOM_PASSWORD")), Pass);
-            if (CleanTargetPassword.IsEmpty() || Pass.TrimStartAndEnd().Equals(CleanTargetPassword, ESearchCase::CaseSensitive))
+            if (Pass.TrimStartAndEnd().Equals(CleanTargetPassword, ESearchCase::CaseSensitive))
             {
                 MatchIndex = 0;
             }
@@ -810,31 +878,66 @@ void UTOGameInstance::OnFindSessionsComplete(
         }
     }
 
-    // 2) 공개 방 검색 모드: 비공개 방(Private)은 검색 목록에서 필터링하여 제외
-    Results.RemoveAll([](const FOnlineSessionSearchResult& Result) {
-        FString MatchType;
-        Result.Session.SessionSettings.Get(FName(TEXT("MATCH_TYPE")), MatchType);
-        return MatchType.Equals(TEXT("Private"), ESearchCase::IgnoreCase);
+    // 2) 공개 방 검색(서버 목록) 모드:
+    // 검색된 세션을 공개 방 우선으로 정렬하여 서버 목록(Scroll_ServerList)에 표시합니다.
+    // 비공개 방도 삭제하지 않고 목록에 표시하여 게스트가 접속할 수 있도록 지원합니다.
+    Results.Sort([](const FOnlineSessionSearchResult& A, const FOnlineSessionSearchResult& B) {
+        FString MatchTypeA, MatchTypeB;
+        A.Session.SessionSettings.Get(FName(TEXT("MATCH_TYPE")), MatchTypeA);
+        B.Session.SessionSettings.Get(FName(TEXT("MATCH_TYPE")), MatchTypeB);
+        bool bIsPrivateA = MatchTypeA.Equals(TEXT("Private"), ESearchCase::IgnoreCase);
+        bool bIsPrivateB = MatchTypeB.Equals(TEXT("Private"), ESearchCase::IgnoreCase);
+        return (!bIsPrivateA && bIsPrivateB); // 공개 방이 위쪽에 오도록 정렬
     });
+
+    int32 PublicCount = 0;
+    int32 PrivateCount = 0;
+    for (const auto& Res : Results)
+    {
+        FString MType;
+        Res.Session.SessionSettings.Get(FName(TEXT("MATCH_TYPE")), MType);
+        if (MType.Equals(TEXT("Private"), ESearchCase::IgnoreCase))
+        {
+            PrivateCount++;
+        }
+        else
+        {
+            PublicCount++;
+        }
+    }
 
     if (GEngine)
     {
         if (Results.Num() > 0)
         {
-            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
-                FString::Printf(TEXT("공개 방 %d개를 찾았습니다!"), Results.Num()));
+            if (PublicCount > 0 && PrivateCount > 0)
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
+                    FString::Printf(TEXT("방 %d개를 찾았습니다! (공개: %d, 비공개: %d)"), Results.Num(), PublicCount, PrivateCount));
+            }
+            else if (PublicCount > 0)
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
+                    FString::Printf(TEXT("공개 방 %d개를 찾았습니다!"), PublicCount));
+            }
+            else
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow,
+                    FString::Printf(TEXT("비공개 방 %d개를 찾았습니다! (목록에서 선택하거나 비공개 탭 이용)"), PrivateCount));
+            }
         }
         else
         {
             GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow,
-                TEXT("현재 열려 있는 공개 방이 없습니다."));
+                TEXT("현재 열려 있는 방이 없습니다."));
         }
     }
 
-    // UI Scroll_ServerList에 검색된 공개 방 목록 직접 등록
-    PopulateServerList();
-
+    // 1. 먼저 블루프린트의 OnRoomsFound_Event 호출 (블루프린트의 ClearChildren() 등이 먼저 실행되도록 함)
     OnRoomsFound.Broadcast();
+
+    // 2. 블루프린트 처리가 끝난 후 C++에서 UI Scroll_ServerList에 검색된 공개 방 목록을 최종 등록
+    PopulateServerList();
 }
 
 void UTOGameInstance::PopulateServerList()
@@ -947,6 +1050,14 @@ void UTOGameInstance::JoinFoundSession(int32 Index)
         }
     }
 
+    // 기존 세션이 남아있다면 반드시 먼저 정리 (두 번째 세션 참가 시 AlreadyInSession 오류 방지)
+    auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
+    if (ExistingSession != nullptr)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Destroying existing session before joining new session..."));
+        SessionInterface->DestroySession(NAME_GameSession);
+    }
+
     const FOnlineSessionSearchResult& Result =
         SessionSearch->SearchResults[Index];
 
@@ -1003,7 +1114,19 @@ FString UTOGameInstance::GetFoundRoomName(int32 Index) const
         FoundRoomName = FString::Printf(TEXT("Room #%d"), Index + 1);
     }
 
-    return FoundRoomName;
+    FString MatchType;
+    Result.Session.SessionSettings.Get(FName(TEXT("MATCH_TYPE")), MatchType);
+    FString Pass;
+    Result.Session.SessionSettings.Get(FName(TEXT("ROOM_PASSWORD")), Pass);
+
+    if (MatchType.Equals(TEXT("Private"), ESearchCase::IgnoreCase) || !Pass.IsEmpty())
+    {
+        return FString::Printf(TEXT("[비공개] %s"), *FoundRoomName);
+    }
+    else
+    {
+        return FString::Printf(TEXT("[공개] %s"), *FoundRoomName);
+    }
 }
 
 int32 UTOGameInstance::GetFoundRoomPlayerCount(int32 Index) const
