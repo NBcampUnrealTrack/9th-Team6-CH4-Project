@@ -8,7 +8,7 @@ public class Operator : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput","UMG", "Slate", "SlateCore", "OnlineSubsystem", "OnlineSubsystemUtils", "AudioMixer", "AudioCapture", "AudioCaptureCore", "Niagara", "NiagaraUIRenderer", "Sockets", "Networking" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput","UMG", "Slate", "SlateCore", "OnlineSubsystem", "OnlineSubsystemUtils", "OnlineSubsystemSteam", "SteamSockets", "AudioMixer", "AudioCapture", "AudioCaptureCore", "Niagara", "NiagaraUIRenderer", "Sockets", "Networking" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
