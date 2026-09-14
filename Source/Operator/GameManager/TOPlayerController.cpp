@@ -11,6 +11,9 @@
 #include "InputKeyEventArgs.h"
 #include "../Character/TOCharacter.h"
 #include "TOGameInstance.h"
+#include "Components/Button.h"
+#include "EngineUtils.h"
+#include "UObject/UObjectIterator.h"
 
 
 ATOPlayerController::ATOPlayerController()
@@ -62,6 +65,9 @@ void ATOPlayerController::BeginPlay()
 
 	// 초기 HUD 상태(SelfHitTestInvisible) 및 Input Mode(GameAndUI) 명시적 초기화
 	SetHUDVisible(true);
+
+	// 대기실 환경설정 버튼 등 자동 바인딩
+	SetupWaitingGameBindings();
 }
 
 void ATOPlayerController::OnPossess(APawn* InPawn)
@@ -223,6 +229,24 @@ bool ATOPlayerController::InputKey(const FInputKeyEventArgs& Params)
 
 void ATOPlayerController::Multicast_UpdateMainUI_Implementation()
 {
+	if (HasAuthority())
+	{
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (ATOPlayerController* PC = Cast<ATOPlayerController>(It->Get()))
+			{
+				PC->Client_UpdateMainUI();
+			}
+		}
+	}
+	else if (IsLocalController())
+	{
+		K2_UpdateMainUI();
+	}
+}
+
+void ATOPlayerController::Client_UpdateMainUI_Implementation()
+{
 	if (IsLocalController())
 	{
 		K2_UpdateMainUI();
@@ -231,8 +255,28 @@ void ATOPlayerController::Multicast_UpdateMainUI_Implementation()
 
 void ATOPlayerController::Multicast_ShowCorrectNotice_Implementation(int32 WinnerPlayerIndex)
 {
-	// 각 클라이언트 로컬에서 블루프린트 이벤트 호출
-	K2_ShowCorrectNotice(WinnerPlayerIndex);
+	if (HasAuthority())
+	{
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (ATOPlayerController* PC = Cast<ATOPlayerController>(It->Get()))
+			{
+				PC->Client_ShowCorrectNotice(WinnerPlayerIndex);
+			}
+		}
+	}
+	else if (IsLocalController())
+	{
+		K2_ShowCorrectNotice(WinnerPlayerIndex);
+	}
+}
+
+void ATOPlayerController::Client_ShowCorrectNotice_Implementation(int32 WinnerPlayerIndex)
+{
+	if (IsLocalController())
+	{
+		K2_ShowCorrectNotice(WinnerPlayerIndex);
+	}
 }
 
 
@@ -338,6 +382,9 @@ void ATOPlayerController::Client_UpdateLobbyState_Implementation(bool bCanEnable
 
 void ATOPlayerController::Client_UpdateFormulaUI_Implementation(const FTOPlayerUIData& NewUIData)
 {
+	// 페이즈 변경에 따른 StartGame 위젯 가시성 제어
+	UpdateStartGamePhaseVisibility(NewUIData.CurrentPhase);
+
 	K2_OnUpdateFormulaUI(NewUIData);
 }
 
@@ -361,6 +408,9 @@ void ATOPlayerController::Client_OnGameStarted_Implementation()
 		{
 			CurrentSubWidget->AddToViewport(0); 
 			CurrentSubWidget->SetVisibility(bIsHUDVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+
+			// 게임 시작 시 기본 페이즈 1(수식 제출)이므로 버튼 및 텍스트 블록 숨김 처리
+			UpdateStartGamePhaseVisibility(ETOGamePhase::SubmittingFormulas);
 		}
 	}
 }
@@ -384,6 +434,9 @@ void ATOPlayerController::Client_OnGameEnded_Implementation()
 		{
 			CurrentSubWidget->AddToViewport(0);
 			CurrentSubWidget->SetVisibility(bIsHUDVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+
+			// 대기실 환경설정 버튼 등 자동 바인딩
+			SetupWaitingGameBindings();
 		}
 	}
 }
@@ -544,6 +597,184 @@ void ATOPlayerController::HandleChatCommitted(const FText& Text, ETextCommit::Ty
 	else if (CommitMethod == ETextCommit::OnCleared)
 	{
 		UnfocusChatInput();
+	}
+}
+
+void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)
+{
+	if (!IsLocalController() || !CurrentSubWidget) return;
+
+	// 페이즈 1 (SubmittingFormulas): 안 보이게 (Collapsed)
+	// 페이즈 2 (GuessingCards): 보이게 (Visible)
+	const ESlateVisibility TargetVisibility = (Phase == ETOGamePhase::GuessingCards) ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+
+	static const TArray<FName> TargetWidgetNames = {
+		FName(TEXT("Btn_SelectNumber")),
+		FName(TEXT("Btn_SelectPlayer")),
+		FName(TEXT("TextBlock_5")),
+		FName(TEXT("TextBlock 5")),
+		FName(TEXT("TextBlock5"))
+	};
+
+	for (const FName& WidgetName : TargetWidgetNames)
+	{
+		if (UWidget* FoundWidget = CurrentSubWidget->GetWidgetFromName(WidgetName))
+		{
+			FoundWidget->SetVisibility(TargetVisibility);
+		}
+	}
+
+	if (CurrentSubWidget->WidgetTree)
+	{
+		TArray<UWidget*> AllWidgets;
+		CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (W)
+			{
+				const FString WName = W->GetName();
+				if (WName.Equals(TEXT("Btn_SelectNumber"), ESearchCase::IgnoreCase) ||
+					WName.Equals(TEXT("Btn_SelectPlayer"), ESearchCase::IgnoreCase) ||
+					WName.Equals(TEXT("TextBlock_5"), ESearchCase::IgnoreCase) ||
+					WName.Equals(TEXT("TextBlock5"), ESearchCase::IgnoreCase))
+				{
+					W->SetVisibility(TargetVisibility);
+				}
+			}
+		}
+	}
+}
+
+void ATOPlayerController::SetInGameMainWidgetVisibility(bool bVisible)
+{
+	if (CurrentInGameMainWidget)
+	{
+		CurrentInGameMainWidget->SetVisibility((bVisible && bIsHUDVisible) ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+	}
+}
+
+void ATOPlayerController::OpenSettingsWidget(UUserWidget* SettingsWidgetInstance)
+{
+	if (!SettingsWidgetInstance) return;
+
+	SetInGameMainWidgetVisibility(false);
+
+	if (!SettingsWidgetInstance->IsInViewport())
+	{
+		SettingsWidgetInstance->AddToViewport(100);
+	}
+
+	bShowMouseCursor = true;
+	FInputModeUIOnly InputMode;
+	InputMode.SetWidgetToFocus(SettingsWidgetInstance->TakeWidget());
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+
+	MonitoredSettingsWidget = SettingsWidgetInstance;
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SettingsWidgetMonitorTimerHandle);
+		World->GetTimerManager().SetTimer(SettingsWidgetMonitorTimerHandle, this, &ATOPlayerController::MonitorSettingsWidgetClosed, 0.05f, true);
+	}
+}
+
+UUserWidget* ATOPlayerController::FindActiveSettingsWidget() const
+{
+	UWorld* CurrentWorld = GetWorld();
+	if (!CurrentWorld) return nullptr;
+
+	for (TObjectIterator<UUserWidget> It; It; ++It)
+	{
+		UUserWidget* Widget = *It;
+		if (IsValid(Widget) && Widget->GetWorld() == CurrentWorld)
+		{
+			if (Widget->GetClass()->GetName().Contains(TEXT("Settings")) && Widget->IsInViewport())
+			{
+				return Widget;
+			}
+		}
+	}
+	return nullptr;
+}
+
+void ATOPlayerController::MonitorSettingsWidgetClosed()
+{
+	if (!MonitoredSettingsWidget.IsValid())
+	{
+		MonitoredSettingsWidget = FindActiveSettingsWidget();
+	}
+
+	// 감시 중인 위젯이 사라졌거나 뷰포트에서 제거된 경우
+	if (!MonitoredSettingsWidget.IsValid() || !MonitoredSettingsWidget->IsInViewport())
+	{
+		// 화면에 다른 Settings 위젯이 아직 남아있는지 확인
+		if (FindActiveSettingsWidget() == nullptr)
+		{
+			if (UWorld* World = GetWorld())
+			{
+				World->GetTimerManager().ClearTimer(SettingsWidgetMonitorTimerHandle);
+			}
+			MonitoredSettingsWidget = nullptr;
+
+			// InGameMainWidget 다시 켜기
+			SetInGameMainWidgetVisibility(true);
+
+			// 입력 모드 복구
+			if (bIsHUDVisible)
+			{
+				FInputModeGameAndUI InputMode;
+				InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+				InputMode.SetHideCursorDuringCapture(false);
+				SetInputMode(InputMode);
+				bShowMouseCursor = true;
+			}
+		}
+	}
+}
+
+void ATOPlayerController::OnSettingsButtonClicked()
+{
+	SetInGameMainWidgetVisibility(false);
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SettingsWidgetMonitorTimerHandle);
+		World->GetTimerManager().SetTimer(SettingsWidgetMonitorTimerHandle, this, &ATOPlayerController::MonitorSettingsWidgetClosed, 0.05f, true);
+	}
+}
+
+void ATOPlayerController::SetupWaitingGameBindings()
+{
+	if (!CurrentSubWidget) return;
+
+	UButton* SettingsBtn = Cast<UButton>(CurrentSubWidget->GetWidgetFromName(FName(TEXT("Btn_Settings"))));
+	if (!SettingsBtn)
+	{
+		SettingsBtn = Cast<UButton>(CurrentSubWidget->GetWidgetFromName(FName(TEXT("Btn_Setting"))));
+	}
+	if (!SettingsBtn && CurrentSubWidget->WidgetTree)
+	{
+		TArray<UWidget*> AllWidgets;
+		CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (UButton* B = Cast<UButton>(W))
+			{
+				const FString BName = B->GetName();
+				if (BName.Contains(TEXT("Setting"), ESearchCase::IgnoreCase))
+				{
+					SettingsBtn = B;
+					break;
+				}
+			}
+		}
+	}
+
+	if (SettingsBtn)
+	{
+		SettingsBtn->OnClicked.RemoveDynamic(this, &ATOPlayerController::OnSettingsButtonClicked);
+		SettingsBtn->OnClicked.AddDynamic(this, &ATOPlayerController::OnSettingsButtonClicked);
 	}
 }
 

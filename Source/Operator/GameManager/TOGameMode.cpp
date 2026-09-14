@@ -85,7 +85,16 @@ void ATOGameMode::PostLogin(APlayerController* NewPlayer)
                 TOPS->bIsReadyToPlay = false; // 기본 Unready
         }
     }
-    TOPC->Multicast_UpdateMainUI();
+    
+    // 신규 입장 시 모든 플레이어의 메인 UI 갱신 브로드캐스트
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        if (ATOPlayerController* PC = Cast<ATOPlayerController>(It->Get()))
+        {
+            PC->Client_UpdateMainUI();
+        }
+    }
+
     BroadcastLobbyState();
     Super::PostLogin(NewPlayer);
 }
@@ -176,6 +185,7 @@ FTOPlayerUIData ATOGameMode::GetUIDataForPlayer(AController* TargetPlayer)
         UIData = UTOFormula::BuildUIDataForPlayer(CurrentServerCardData, TargetIndex, RevealedList);
     }
 
+    UIData.CurrentPhase = CurrentGamePhase;
     return UIData;
 }
 
@@ -271,6 +281,7 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
         bRoundHasWinner = true;
         int32 WinnerIndex = WinnersThisRound[0];
 
+        // 1. 승자 점수 반영
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
@@ -280,10 +291,16 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
                 {
                     TOPS->AddScorePoints(1);
                 }
-                TOPC->Multicast_UpdateMainUI();
-                // 모든 클라이언트 화면에 브로드캐스트
-                TOPC->Multicast_ShowCorrectNotice(WinnerIndex);
-                break;
+            }
+        }
+
+        // 2. 모든 접속 중인 클라이언트에 점수판/메인 UI 갱신 및 정답 알림 브로드캐스트
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
+            {
+                TOPC->Client_UpdateMainUI();
+                TOPC->Client_ShowCorrectNotice(WinnerIndex);
             }
         }
         //3초 연출 후 라운드 종료 타이머 세팅

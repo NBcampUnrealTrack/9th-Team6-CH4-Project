@@ -21,6 +21,16 @@ enum class ETOAnswerStage : uint8
     GuessSingleCard     UMETA(DisplayName = "타인 카드 1개 유추")
 };
 
+// 게임 진행 페이즈 정의
+UENUM(BlueprintType)
+enum class ETOGamePhase : uint8
+{
+    WaitingToStart,     // 대기 중
+    SubmittingFormulas, // Phase 1: 수식 조합 및 제출 단계
+    GuessingCards,      // Phase 2: 타인 카드 유추 단계
+    RoundOver           // 라운드 종료 / 점수 정산
+};
+
 
 
 
@@ -101,6 +111,10 @@ struct FTOPlayerUIData
     // 이미 정답을 맞혀서 공개된 알파벳 목록
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     TArray<FString> RevealedAlphabets;
+
+    // 현재 게임 페이즈 (Phase 1: SubmittingFormulas, Phase 2: GuessingCards 등)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    ETOGamePhase CurrentPhase = ETOGamePhase::WaitingToStart;
 };
 
 // RPC 전송을 위한 Key-Value 쌍 구조체

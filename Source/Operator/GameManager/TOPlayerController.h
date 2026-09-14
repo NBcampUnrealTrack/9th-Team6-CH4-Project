@@ -93,19 +93,48 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_ReceiveGuessResult(bool bIsCorrect, const FString& TargetAlphabet, int32 RevealedValue);
 
-	// 정답 연출
+	// 정답 연출 (전체 클라이언트 브로드캐스트용 Client RPC)
+	UFUNCTION(Client, Reliable)
+	void Client_ShowCorrectNotice(int32 WinnerPlayerIndex);
+
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_ShowCorrectNotice(int32 WinnerPlayerIndex);
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
 	void K2_ShowCorrectNotice(int32 WinnerPlayerIndex);
 
-	// 메인 위젯 갱신 요청
+	// 메인 위젯 갱신 요청 (전체 클라이언트 브로드캐스트용 Client RPC)
+	UFUNCTION(Client, Reliable)
+	void Client_UpdateMainUI();
+
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_UpdateMainUI();
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
 	void K2_UpdateMainUI();
+
+	// WBP_StartGame 페이즈별 위젯 가시성 설정 (Phase 1: 숨김, Phase 2: 표시)
+	UFUNCTION(BlueprintCallable, Category = "TO|UI")
+	void UpdateStartGamePhaseVisibility(ETOGamePhase Phase);
+
+	// InGameMainWidget 표시/숨김 설정 (환경설정 등 전체화면 팝업 시 유용)
+	UFUNCTION(BlueprintCallable, Category = "TO|UI")
+	void SetInGameMainWidgetVisibility(bool bVisible);
+
+	// 환경설정 위젯 열기: InGameMainWidget을 숨기고, 환경설정이 닫힐 때 자동으로 복구
+	UFUNCTION(BlueprintCallable, Category = "TO|UI")
+	void OpenSettingsWidget(UUserWidget* SettingsWidgetInstance);
+
+protected:
+	FTimerHandle SettingsWidgetMonitorTimerHandle;
+	TWeakObjectPtr<UUserWidget> MonitoredSettingsWidget;
+	void MonitorSettingsWidgetClosed();
+	UUserWidget* FindActiveSettingsWidget() const;
+
+	UFUNCTION()
+	void OnSettingsButtonClicked();
+
+	void SetupWaitingGameBindings();
 	
 	// ------------------- UI - Class & Instance 파트 -----------------------------
 protected:
