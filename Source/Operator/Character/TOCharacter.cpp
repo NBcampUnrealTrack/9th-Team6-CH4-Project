@@ -257,11 +257,15 @@ void ATOCharacter::Tick(float DeltaTime)
 
 		// Clamping Yaw [-70, 70] and Pitch [-40, 30] for natural head rotation
 		const float TargetYaw = FMath::Clamp(DeltaRot.Yaw, -70.0f, 70.0f);
-		// Invert pitch: looking down yields negative pitch, but mesh Component Space Roll needs positive rotation to tilt head down
-		const float TargetPitch = -FMath::Clamp(DeltaRot.Pitch, -40.0f, 30.0f);
-		const FRotator TargetHeadRot(TargetPitch, TargetYaw, 0.0f);
+		// Invert pitch: looking down yields negative DeltaRot.Pitch, but mesh Component Space Roll needs positive rotation to tilt head down
+		const float TargetRoll = -FMath::Clamp(DeltaRot.Pitch, -40.0f, 30.0f);
+		// In Component Space of SkeletalMesh (Yaw=-90):
+		// - Roll (X axis) is nodding up/down
+		// - Yaw (Z axis) is turning left/right
+		// - Pitch (Y axis) is tilting sideways towards shoulder -> set to 0.0f to prevent neck tilt
+		const FRotator TargetHeadRot(0.0f, TargetYaw, TargetRoll);
 
-		HeadRotation = FMath::RInterpTo(HeadRotation, TargetHeadRot, DeltaTime, 12.0f);
+		HeadRotation = FMath::RInterpTo(HeadRotation, TargetHeadRot, DeltaTime, 12.0f).GetNormalized();
 
 		if (!HasAuthority())
 		{
@@ -278,7 +282,8 @@ void ATOCharacter::Tick(float DeltaTime)
 	}
 	else
 	{
-		HeadRotation = FMath::RInterpTo(HeadRotation, ReplicatedHeadRotation, DeltaTime, 12.0f);
+		const FRotator TargetRot = ReplicatedHeadRotation.GetNormalized();
+		HeadRotation = FMath::RInterpTo(HeadRotation, TargetRot, DeltaTime, 12.0f).GetNormalized();
 	}
 }
 
@@ -551,7 +556,12 @@ void ATOCharacter::Multicast_PlayEmote_Implementation(ECharacterEmoteState Emote
 
 void ATOCharacter::Server_UpdateHeadRotation_Implementation(const FRotator& NewHeadRotation)
 {
-	ReplicatedHeadRotation = NewHeadRotation;
+	ReplicatedHeadRotation = NewHeadRotation.GetNormalized();
+}
+
+void ATOCharacter::OnRep_ReplicatedHeadRotation()
+{
+	ReplicatedHeadRotation.Normalize();
 }
 
 void ATOCharacter::OnRep_RepPlayerName()
