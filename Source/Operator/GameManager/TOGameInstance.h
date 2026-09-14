@@ -75,7 +75,21 @@ public:
     UFUNCTION()
     void OnPublicSearchButtonClicked();
 
+    // 안전한 세션 종료 및 메인 메뉴로 복귀 (블루프린트 및 C++에서 호출 가능)
+    UFUNCTION(BlueprintCallable, Category = "Session")
+    void LeaveSessionAndReturnToMenu();
+
+    UFUNCTION()
+    void OnWaitingGameExitClicked();
+
+    // 스팀 친구 초대 창 열기 (Steam 오버레이 초대 UI 팝업)
+    UFUNCTION(BlueprintCallable, Category = "Session")
+    void OpenSteamInviteUI();
+
+    void CleanUpExistingSession();
+
     FString GetBestHostIP() const;
+    bool IsUsingSteamSubsystem() const;
     
     // =========================================================================
     // Customization & Session Info
@@ -108,18 +122,34 @@ protected:
     FString TargetPassword;
     FString TargetRoomName;
     bool bIsSearchingPrivate = false;
+    bool bIsSessionSearchInProgress = false;
 
     FTSTicker::FDelegateHandle TickerHandle;
     TWeakObjectPtr<UUserWidget> BoundJoinMenu;
     TWeakObjectPtr<UButton> BoundPrivateJoinBtn;
+    TWeakObjectPtr<UUserWidget> BoundWaitingGameWidget;
+    TWeakObjectPtr<UButton> BoundWaitingGameExitBtn;
 
     bool TickWidgetBindings(float DeltaTime);
     UUserWidget* FindActiveWidget(const FString& ClassSubstr) const;
     void UpdatePlayerNameFromActiveMenu();
     void PopulateServerList();
 
-    
+    enum class EPendingSessionAction : uint8
+    {
+        None,
+        Create,
+        Join
+    };
+
+    EPendingSessionAction PendingSessionAction = EPendingSessionAction::None;
+    FOnlineSessionSettings PendingSessionSettings;
+    FOnlineSessionSearchResult PendingJoinSearchResult;
+
+    void JoinSessionInternal(const FOnlineSessionSearchResult& Result);
     void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
     void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
     void OnFindSessionsComplete(bool bWasSuccessful);
+    void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
+    void OnSessionUserInviteAccepted(const bool bWasSuccessful, const int32 ControllerId, FUniqueNetIdPtr UserId, const FOnlineSessionSearchResult& InviteResult);
 };
