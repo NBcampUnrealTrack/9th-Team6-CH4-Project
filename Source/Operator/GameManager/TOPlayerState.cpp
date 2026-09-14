@@ -45,18 +45,37 @@ void ATOPlayerState::AddScorePoints(int32 InScore)
 
 void ATOPlayerState::Server_SetPlayerName_Implementation(const FString& NewName)
 {
-	PlayerNameString = NewName;
+	SetPlayerNameString(NewName);
+}
 
-	// 언리얼 기본 APlayerState의 PlayerName 속성도 함께 설정 (선택 사항)
+void ATOPlayerState::SetPlayerNameString(const FString& NewName)
+{
+	PlayerNameString = NewName;
 	SetPlayerName(NewName);
+
+	if (APawn* TargetPawn = GetPawn())
+	{
+		if (ATOCharacter* Char = Cast<ATOCharacter>(TargetPawn))
+		{
+			Char->UpdateNameTagWidget(NewName);
+		}
+	}
 }
 
 // [클라이언트에서 실행] 서버로부터 닉네임 값이 동기화되면 자동으로 실행
 void ATOPlayerState::OnRep_PlayerNameString()
 {
-	// 캐릭터 머리 위 UI나 스코어보드 닉네임 갱신 로직이 들어갈 위치입니다.
 	UE_LOG(LogTemp, Log, TEXT("PlayerName Replicated: %s"), *PlayerNameString);
+
+	if (APawn* TargetPawn = GetPawn())
+	{
+		if (ATOCharacter* Char = Cast<ATOCharacter>(TargetPawn))
+		{
+			Char->UpdateNameTagWidget(PlayerNameString);
+		}
+	}
 }
+
 
 void ATOPlayerState::Server_SetCustomization_Implementation(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex)
 {

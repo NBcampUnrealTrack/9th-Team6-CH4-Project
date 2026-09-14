@@ -62,6 +62,9 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "TO|PlayerState")
 	void Server_SetPlayerName(const FString& NewName);
 
+	void SetPlayerNameString(const FString& NewName);
+
+
 	// 닉네임이 동기화될 때 클라이언트에서 호출될 함수 (UI/머리 위 닉네임 갱신용)
 	UFUNCTION()
 	void OnRep_PlayerNameString();

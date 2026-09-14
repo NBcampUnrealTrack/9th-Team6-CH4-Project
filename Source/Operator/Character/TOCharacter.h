@@ -40,6 +40,7 @@ protected:
 public:	
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1.0f, bool bForce = false) override;
 
 	// =========================================================================
 	// UI & HUD Input Toggle
@@ -72,6 +73,15 @@ public:
 	// =========================================================================
 	// Customization (Modular Mesh)
 	// =========================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
+	TArray<USkeletalMesh*> HairMeshList;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
+	TArray<USkeletalMesh*> TopMeshList;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Operator|Customization")
+	TArray<USkeletalMesh*> BottomMeshList;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Operator|Customization")
 	int32 CurrentHairIndex = 0;
 
@@ -81,9 +91,43 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Operator|Customization")
 	int32 CurrentBottomIndex = 0;
 
+	UPROPERTY(ReplicatedUsing = OnRep_CharacterCustomization)
+	int32 RepHairIndex = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_CharacterCustomization)
+	int32 RepTopIndex = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_CharacterCustomization)
+	int32 RepBottomIndex = 0;
+
+	UFUNCTION()
+	void OnRep_CharacterCustomization();
+
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Operator|Customization")
 	void ApplyCustomization(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex);
 	virtual void ApplyCustomization_Implementation(int32 InHairIndex, int32 InTopIndex, int32 InBottomIndex);
+
+	// =========================================================================
+	// Player Name & Head NameTag UI
+	// =========================================================================
+	UPROPERTY(ReplicatedUsing = OnRep_RepPlayerName, BlueprintReadOnly, Category = "Operator|PlayerInfo")
+	FString RepPlayerName;
+
+	UFUNCTION()
+	void OnRep_RepPlayerName();
+
+	UFUNCTION(BlueprintCallable, Category = "Operator|UI")
+	void UpdateNameTagWidget(const FString& NewPlayerName);
+
+	USkeletalMeshComponent* FindModularComponent(const FName& CompName) const;
+	void InitializeDefaultCustomizationMeshes();
+
+protected:
+	FTimerHandle NameTagRetryTimerHandle;
+	void RetryUpdateNameTagWidget();
+
+public:
+
 
 	// =========================================================================
 	// Seating State & Logic

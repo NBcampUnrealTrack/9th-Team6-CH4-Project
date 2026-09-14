@@ -8,6 +8,7 @@
 
 class FOnlineSessionSearch;
 class UUserWidget;
+class UButton;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRoomsFound);
 
@@ -110,9 +111,13 @@ protected:
 
     FTSTicker::FDelegateHandle TickerHandle;
     TWeakObjectPtr<UUserWidget> BoundJoinMenu;
+    TWeakObjectPtr<UButton> BoundPrivateJoinBtn;
 
     bool TickWidgetBindings(float DeltaTime);
     UUserWidget* FindActiveWidget(const FString& ClassSubstr) const;
+    void UpdatePlayerNameFromActiveMenu();
+    void PopulateServerList();
+
     
     void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
     void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
