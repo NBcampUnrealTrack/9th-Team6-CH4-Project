@@ -137,14 +137,14 @@ struct FTOGuessSingleInputData
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 SubmittingPlayerIndex = 0; // 제출자 Index
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) // 제출자 Index
+    int32 SubmittingPlayerIndex = 0;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FString TargetAlphabet; // 유추할 대상 알파벳 (예: "C")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)// 유추할 대상 알파벳 (예: "C")
+    FString TargetAlphabet; 
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    int32 GuessedValue = 0; // 입력한 숫자 (예: 2)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)// 입력한 숫자 (예: 2)
+    int32 GuessedValue = 0; 
 };
 
 // 플레이어가 게임 진행 중 밝혀낸 타인의 카드 정보
