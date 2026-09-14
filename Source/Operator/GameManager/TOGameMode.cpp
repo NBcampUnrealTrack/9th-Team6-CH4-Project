@@ -322,15 +322,18 @@ void ATOGameMode::ProcessAllGuessSubmissions()
 {
     for (const auto& Pair : PendingGuessSubmissions)
     {
-        int32 PlayerIndex = Pair.Key;
+        int32 SubmitterPlayerIndex = Pair.Key;
         const FTOGuessSingleInputData& SingleGuessData = Pair.Value;
 
+        // 1. 단일 카드 유추 검증
         bool bIsMatch = UTOFormula::VerifySingleCard(CurrentServerCardData, SingleGuessData);
         int32 RevealedVal = -999;
 
         if (bIsMatch)
         {
-            AddRevealedAlphabetForPlayer(PlayerIndex, SingleGuessData.TargetAlphabet);
+            // 유추 성공 시 공개 목록 추가
+            AddRevealedAlphabetForPlayer(SubmitterPlayerIndex, SingleGuessData.TargetAlphabet);
+
             for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
             {
                 if (Card.PlayerAlphabet == SingleGuessData.TargetAlphabet)
@@ -339,15 +342,19 @@ void ATOGameMode::ProcessAllGuessSubmissions()
                     break;
                 }
             }
+
+            // 전원 UI 갱신 (B -> 1 로 변경되는 부분)
+            BroadcastUIUpdate();
         }
 
+        // 2. 제출한 본인(SubmitterPlayerIndex)에게만 결과 RPC 전송
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
-            if (TOPC && TOPC->AssignedPlayerIndex == PlayerIndex)
+            if (TOPC && TOPC->AssignedPlayerIndex == SubmitterPlayerIndex) // 👈 제출자 본인 검증
             {
                 TOPC->Client_ReceiveGuessResult(bIsMatch, SingleGuessData.TargetAlphabet, RevealedVal);
-                break;
+                break; // 본인을 찾았으므로 루프 탈출
             }
         }
     }
@@ -355,7 +362,6 @@ void ATOGameMode::ProcessAllGuessSubmissions()
     PendingGuessSubmissions.Empty();
     SubmittedPlayerIndices.Empty();
 
-    // 유추 처리 완료 후 다시 정답 제출 단계로 전환 후 UI 전파
     CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
     BroadcastUIUpdate();
 }

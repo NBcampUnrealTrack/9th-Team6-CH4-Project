@@ -441,19 +441,11 @@ void ATOPlayerController::Client_OnGameEnded_Implementation()
 	}
 }
 
-// 서버로부터 제출 결과를 수신하여 클라이언트에 성공/실패 연출 출력
-void ATOPlayerController::Client_ReceiveGuessResult_Implementation(bool bIsCorrect, const FString& TargetAlphabet, int32 RevealedValue)
-{
-	if (bIsCorrect)
+void Client_ReceiveGuessResult(bool bIsMatch, const FString& TargetAlphabet, int32 RevealedVal)
 	{
-		// UI에 정답 성공 연출 및 공개된 카드 정보 출력
+		
 	}
-	else
-	{
-		// UI에 오답 연출 출력
-	}
-}
-
+	
 // 클라이언트가 입력한 메시지를 서버로 전송
 void ATOPlayerController::Server_SendChatMessage_Implementation(const FString& Message)
 {
@@ -598,6 +590,16 @@ void ATOPlayerController::HandleChatCommitted(const FText& Text, ETextCommit::Ty
 	{
 		UnfocusChatInput();
 	}
+}
+
+
+// 단일카드 유추 했을 때 호출
+void ATOPlayerController::Client_ReceiveGuessResult_Implementation(bool bIsMatch, const FString& TargetAlphabet, int32 RevealedVal)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[Client RPC] bIsMatch: %s, Alphabet: %s, Val: %d"), 
+		bIsMatch ? TEXT("TRUE") : TEXT("FALSE"), *TargetAlphabet, RevealedVal);
+	
+	K2_OnReceiveGuessResult(bIsMatch, TargetAlphabet, RevealedVal);
 }
 
 void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)

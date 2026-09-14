@@ -91,8 +91,11 @@ public:
 
 	// 카드 유추 결과 수신 및 UI 연출 출력 요청
 	UFUNCTION(Client, Reliable)
-	void Client_ReceiveGuessResult(bool bIsCorrect, const FString& TargetAlphabet, int32 RevealedValue);
+	void Client_ReceiveGuessResult(bool bIsMatch, const FString& TargetAlphabet, int32 RevealedVal);
 
+	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
+	void K2_OnReceiveGuessResult(bool bIsMatch, const FString& TargetAlphabet, int32 RevealedVal);
+	
 	// 정답 연출 (전체 클라이언트 브로드캐스트용 Client RPC)
 	UFUNCTION(Client, Reliable)
 	void Client_ShowCorrectNotice(int32 WinnerPlayerIndex);
