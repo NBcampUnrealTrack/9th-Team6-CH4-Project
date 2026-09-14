@@ -15,6 +15,10 @@ class OPERATOR_API UAudioSettingSubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 
 public:
+	
+	// 생성자 추가
+	UAudioSettingSubsystem();
+	
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	
 	// 사용 가능한 오디오 출력 장치 목록 가져오기
