@@ -30,6 +30,16 @@ void UTOGameInstance::Init()
         SessionInterface = Subsystem->GetSessionInterface();
         UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] OnlineSubsystem Name: %s"), *Subsystem->GetSubsystemName().ToString());
 
+        FString SavedName;
+        if (GConfig && GConfig->GetString(TEXT("Operator"), TEXT("SavedPlayerName"), SavedName, GGameIni))
+        {
+            if (!SavedName.TrimStartAndEnd().IsEmpty())
+            {
+                PlayerName = SavedName.TrimStartAndEnd();
+                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Restored saved PlayerName: %s"), *PlayerName);
+            }
+        }
+
         if (IOnlineIdentityPtr Identity = Subsystem->GetIdentityInterface())
         {
             FString SteamNickname = Identity->GetPlayerNickname(0);
@@ -204,8 +214,41 @@ bool UTOGameInstance::TickWidgetBindings(float DeltaTime)
         if (BoundJoinMenu.Get() != JoinMenu)
         {
             BoundJoinMenu = JoinMenu;
+
+            // 메뉴 최초 진입 시 기존 닉네임이 있다면 텍스트 박스 자동 프리필
+            if (!PlayerName.IsEmpty() && !PlayerName.Equals(TEXT("Player")))
+            {
+                if (UEditableTextBox* Box = Cast<UEditableTextBox>(JoinMenu->GetWidgetFromName(FName(TEXT("Input_Nickname")))))
+                {
+                    if (Box->GetText().IsEmpty()) Box->SetText(FText::FromString(PlayerName));
+                }
+                if (UEditableTextBox* Box = Cast<UEditableTextBox>(JoinMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+                {
+                    if (Box->GetText().IsEmpty()) Box->SetText(FText::FromString(PlayerName));
+                }
+            }
         }
     }
+
+    if (UUserWidget* CreateMenu = FindActiveWidget(TEXT("WBP_CreateRoomMenu")))
+    {
+        if (BoundCreateMenu.Get() != CreateMenu)
+        {
+            BoundCreateMenu = CreateMenu;
+
+            if (!PlayerName.IsEmpty() && !PlayerName.Equals(TEXT("Player")))
+            {
+                if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+                {
+                    if (Box->GetText().IsEmpty()) Box->SetText(FText::FromString(PlayerName));
+                }
+            }
+        }
+    }
+
+    // 활성 메뉴 위젯에서 닉네임 입력값을 실시간 동기화
+    UpdatePlayerNameFromActiveMenu();
+
     return true;
 }
 
@@ -335,30 +378,90 @@ static bool IsIPv4Address(const FString& Str)
     return true;
 }
 
+void UTOGameInstance::SavePlayerNameToConfig()
+{
+    if (GConfig && !PlayerName.IsEmpty() && !PlayerName.Equals(TEXT("Player")))
+    {
+        GConfig->SetString(TEXT("Operator"), TEXT("SavedPlayerName"), *PlayerName, GGameIni);
+        GConfig->Flush(false, GGameIni);
+    }
+}
+
+static FString ExtractPlayerNameFromWidget(UUserWidget* Widget)
+{
+    if (!Widget) return TEXT("");
+
+    // 1. 공용 위젯 명칭 우선 확인 (Input_Nickname, ETB_PlayerName, ETB_Nickname, Nickname 등)
+    const TArray<FName> KnownNames = {
+        FName(TEXT("Input_Nickname")),
+        FName(TEXT("ETB_PlayerName")),
+        FName(TEXT("ETB_Nickname")),
+        FName(TEXT("NicknameTextBox")),
+        FName(TEXT("PlayerNameTextBox")),
+        FName(TEXT("Text_Nickname")),
+        FName(TEXT("Text_PlayerName"))
+    };
+
+    for (const FName& WName : KnownNames)
+    {
+        if (UEditableTextBox* Box = Cast<UEditableTextBox>(Widget->GetWidgetFromName(WName)))
+        {
+            FString Text = Box->GetText().ToString().TrimStartAndEnd();
+            if (!Text.IsEmpty())
+            {
+                return Text;
+            }
+        }
+    }
+
+    // 2. 위젯 트리 전체 순회하여 이름에 Nickname이나 PlayerName이 포함된 EditableTextBox 탐색
+    if (Widget->WidgetTree)
+    {
+        TArray<UWidget*> AllWidgets;
+        Widget->WidgetTree->GetAllWidgets(AllWidgets);
+        for (UWidget* W : AllWidgets)
+        {
+            if (UEditableTextBox* Box = Cast<UEditableTextBox>(W))
+            {
+                FString BoxName = Box->GetName();
+                if ((BoxName.Contains(TEXT("Nick"), ESearchCase::IgnoreCase) || 
+                     BoxName.Contains(TEXT("PlayerName"), ESearchCase::IgnoreCase)) &&
+                    !BoxName.Contains(TEXT("Room"), ESearchCase::IgnoreCase) &&
+                    !BoxName.Contains(TEXT("Pass"), ESearchCase::IgnoreCase))
+                {
+                    FString Text = Box->GetText().ToString().TrimStartAndEnd();
+                    if (!Text.IsEmpty())
+                    {
+                        return Text;
+                    }
+                }
+            }
+        }
+    }
+
+    return TEXT("");
+}
+
 void UTOGameInstance::UpdatePlayerNameFromActiveMenu()
 {
     if (UUserWidget* JoinMenu = FindActiveWidget(TEXT("WBP_JoinRoomMenu")))
     {
-        if (UEditableTextBox* Box = Cast<UEditableTextBox>(JoinMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+        FString FoundName = ExtractPlayerNameFromWidget(JoinMenu);
+        if (!FoundName.IsEmpty())
         {
-            FString InputPName = Box->GetText().ToString().TrimStartAndEnd();
-            if (!InputPName.IsEmpty())
-            {
-                PlayerName = InputPName;
-                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Updated PlayerName from JoinMenu: %s"), *PlayerName);
-            }
+            PlayerName = FoundName;
+            UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Updated PlayerName from JoinMenu: %s"), *PlayerName);
+            SavePlayerNameToConfig();
         }
     }
     if (UUserWidget* CreateMenu = FindActiveWidget(TEXT("WBP_CreateRoomMenu")))
     {
-        if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+        FString FoundName = ExtractPlayerNameFromWidget(CreateMenu);
+        if (!FoundName.IsEmpty())
         {
-            FString InputPName = Box->GetText().ToString().TrimStartAndEnd();
-            if (!InputPName.IsEmpty())
-            {
-                PlayerName = InputPName;
-                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Updated PlayerName from CreateMenu: %s"), *PlayerName);
-            }
+            PlayerName = FoundName;
+            UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Updated PlayerName from CreateMenu: %s"), *PlayerName);
+            SavePlayerNameToConfig();
         }
     }
 }
@@ -375,18 +478,8 @@ void UTOGameInstance::OnPrivateJoinButtonClicked()
         return;
     }
 
-    FString InputPlayerName;
     FString InputRoomName;
     FString InputPassword;
-
-    if (UEditableTextBox* Box = Cast<UEditableTextBox>(JoinMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
-    {
-        InputPlayerName = Box->GetText().ToString().TrimStartAndEnd();
-        if (!InputPlayerName.IsEmpty())
-        {
-            PlayerName = InputPlayerName;
-        }
-    }
 
     if (UEditableTextBox* Box = Cast<UEditableTextBox>(JoinMenu->GetWidgetFromName(FName(TEXT("ETB_RoomName")))))
     {
@@ -502,13 +595,11 @@ void UTOGameInstance::CreateMySession(const FString& Password, const FString& In
         {
             FinalPassword = Box->GetText().ToString().TrimStartAndEnd();
         }
-        if (UEditableTextBox* Box = Cast<UEditableTextBox>(CreateMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
+        FString FoundPName = ExtractPlayerNameFromWidget(CreateMenu);
+        if (!FoundPName.IsEmpty())
         {
-            FString PName = Box->GetText().ToString().TrimStartAndEnd();
-            if (!PName.IsEmpty())
-            {
-                PlayerName = PName;
-            }
+            PlayerName = FoundPName;
+            SavePlayerNameToConfig();
         }
     }
 
@@ -738,8 +829,14 @@ void UTOGameInstance::OnJoinSessionComplete(
 
             if (APlayerController* PC = GetFirstLocalPlayerController())
             {
+                FString TravelURL = ConnectAddress;
+                if (!PlayerName.IsEmpty())
+                {
+                    TravelURL += FString::Printf(TEXT("?Name=%s"), *PlayerName);
+                }
+                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] ClientTravel to: %s (PlayerName: %s)"), *TravelURL, *PlayerName);
                 PC->ClientTravel(
-                    ConnectAddress,
+                    TravelURL,
                     ETravelType::TRAVEL_Absolute
                 );
             }
@@ -1417,19 +1514,8 @@ void UTOGameInstance::JoinFoundSession(int32 Index)
         return;
     }
 
-    // 공개 방 목록에서 참가 시에도 ETB_PlayerName 확인하여 PlayerName 업데이트
-    if (UUserWidget* JoinMenu = FindActiveWidget(TEXT("WBP_JoinRoomMenu")))
-    {
-        if (UEditableTextBox* Box = Cast<UEditableTextBox>(JoinMenu->GetWidgetFromName(FName(TEXT("ETB_PlayerName")))))
-        {
-            FString InputPName = Box->GetText().ToString().TrimStartAndEnd();
-            if (!InputPName.IsEmpty())
-            {
-                PlayerName = InputPName;
-                UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Updated PlayerName for Join: %s"), *PlayerName);
-            }
-        }
-    }
+    // 공개 방 목록에서 참가 시에도 Input_Nickname / ETB_PlayerName 확인하여 PlayerName 업데이트
+    UpdatePlayerNameFromActiveMenu();
 
     JoinSessionInternal(SessionSearch->SearchResults[Index]);
 }
@@ -1647,7 +1733,12 @@ void UTOGameInstance::JoinServerByIP(const FString& IPAddress)
 
     if (APlayerController* PC = GetFirstLocalPlayerController())
     {
-        PC->ClientTravel(CleanAddress, ETravelType::TRAVEL_Absolute);
+        FString TravelURL = CleanAddress;
+        if (!PlayerName.IsEmpty())
+        {
+            TravelURL += FString::Printf(TEXT("?Name=%s"), *PlayerName);
+        }
+        PC->ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
     }
     else
     {

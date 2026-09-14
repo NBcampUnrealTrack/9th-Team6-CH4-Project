@@ -90,6 +90,7 @@ public:
 
     FString GetBestHostIP() const;
     bool IsUsingSteamSubsystem() const;
+    void SavePlayerNameToConfig();
     
     // =========================================================================
     // Customization & Session Info
@@ -126,6 +127,7 @@ protected:
 
     FTSTicker::FDelegateHandle TickerHandle;
     TWeakObjectPtr<UUserWidget> BoundJoinMenu;
+    TWeakObjectPtr<UUserWidget> BoundCreateMenu;
     TWeakObjectPtr<UButton> BoundPrivateJoinBtn;
     TWeakObjectPtr<UUserWidget> BoundWaitingGameWidget;
     TWeakObjectPtr<UButton> BoundWaitingGameExitBtn;

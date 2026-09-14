@@ -201,11 +201,14 @@ public:
 	FRotator HeadRotation = FRotator::ZeroRotator;
 
 	UFUNCTION(BlueprintCallable, Category = "Operator|Animation")
-	FRotator GetHeadRotation() const { return HeadRotation; }
+	FRotator GetHeadRotation() const { return HeadRotation.GetNormalized(); }
 
 protected:
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedHeadRotation)
 	FRotator ReplicatedHeadRotation = FRotator::ZeroRotator;
+
+	UFUNCTION()
+	void OnRep_ReplicatedHeadRotation();
 
 	UFUNCTION(Server, Unreliable)
 	void Server_UpdateHeadRotation(const FRotator& NewHeadRotation);
