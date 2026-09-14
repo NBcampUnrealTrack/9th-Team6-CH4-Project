@@ -1,7 +1,6 @@
 #include "AudioSettingSubsystem.h"
 #include "AudioCaptureCore.h"
 #include "AudioCaptureBlueprintLibrary.h"
-#include "AudioDeviceManager.h"
 #include "AudioMixerBlueprintLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
@@ -59,11 +58,6 @@ void UAudioSettingSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	HookAudioCaptureFunction();
 
-	// 에셋 경로를 C++에서 직접 로드 (블루프린트 할당 누락 방지)
-	MasterSoundMix = LoadObject<USoundMix>(nullptr, TEXT("/Game/Audio/Master_Mix.Master_Mix"));
-	MasterSoundClass = LoadObject<USoundClass>(nullptr, TEXT("/Game/Audio/Master_SC.Master_SC"));
-	BGMSoundClass = LoadObject<USoundClass>(nullptr, TEXT("/Game/Audio/BGM_SC.BGM_SC"));
-	SFXSoundClass = LoadObject<USoundClass>(nullptr, TEXT("/Game/Audio/SFX_SC.SFX_SC"));
 }
 
 void UAudioSettingSubsystem::ApplyVolume(USoundClass* TargetClass, float Volume)
@@ -201,4 +195,31 @@ void UAudioSettingSubsystem::SetAudioOutputDevice(FString DeviceIdOrName)
 void UAudioSettingSubsystem::OnAudioDeviceSwapped(const FSwapAudioOutputResult& SwapResult)
 {
 	UE_LOG(LogTemp, Log, TEXT("[AudioSubsystem] Swapped to Device ID: %s"), *SwapResult.RequestedDeviceId);
+}
+
+UAudioSettingSubsystem::UAudioSettingSubsystem()
+{
+	static ConstructorHelpers::FObjectFinder<USoundMix> MasterMixAsset(TEXT("/Game/Audio/Master_Mix.Master_Mix"));
+	if (MasterMixAsset.Succeeded())
+	{
+		MasterSoundMix = MasterMixAsset.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<USoundClass> MasterSCAsset(TEXT("/Game/Audio/Master_SC.Master_SC"));
+	if (MasterSCAsset.Succeeded())
+	{
+		MasterSoundClass = MasterSCAsset.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<USoundClass> BGM_SCAsset(TEXT("/Game/Audio/BGM_SC.BGM_SC"));
+	if (BGM_SCAsset.Succeeded())
+	{
+		BGMSoundClass = BGM_SCAsset.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<USoundClass> SFX_SCAsset(TEXT("/Game/Audio/SFX_SC.SFX_SC"));
+	if (SFX_SCAsset.Succeeded())
+	{
+		SFXSoundClass = SFX_SCAsset.Object;
+	}
 }
