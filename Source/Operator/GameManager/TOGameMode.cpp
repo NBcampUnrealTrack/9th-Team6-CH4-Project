@@ -346,22 +346,21 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
 
 void ATOGameMode::ProcessAllGuessSubmissions()
 {
-    TArray<int32> InstantWinners;
-
     for (const auto& Pair : PendingGuessSubmissions)
     {
         int32 SubmitterPlayerIndex = Pair.Key;
         const FTOGuessSingleInputData& SingleGuessData = Pair.Value;
 
-        // 1. 단일 카드 유추 검증
+        // 1. 단일 카드 유추 검증 (알파벳-숫자 매칭)
         bool bIsMatch = UTOFormula::VerifySingleCard(CurrentServerCardData, SingleGuessData);
         int32 RevealedVal = -999;
 
         if (bIsMatch)
         {
-            // 유추 성공 시 공개 목록 추가
+            // 유추 성공 시 공개 알파벳 목록에 추가
             AddRevealedAlphabetForPlayer(SubmitterPlayerIndex, SingleGuessData.TargetAlphabet);
 
+            // 해당 알파벳의 실제 카드 값(숫자) 찾기
             for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
             {
                 if (Card.PlayerAlphabet == SingleGuessData.TargetAlphabet)
@@ -371,31 +370,11 @@ void ATOGameMode::ProcessAllGuessSubmissions()
                 }
             }
 
-            // 전원 UI 갱신 (B -> 1 로 변경되는 부분)
+            // 알파벳이 밝혀졌으므로 전체 UI/FormulaBox 상태 갱신 (Btn -> Slot 변경 전파)
             BroadcastUIUpdate();
-
-            // 유추 성공 후 해당 제출자의 수식 내 타인 카드가 모두 밝혀졌는지 확인
-            const TArray<FString>& Revealed = PlayerRevealedAlphabets[SubmitterPlayerIndex].RevealedAlphabets;
-            bool bAllOthersRevealed = true;
-            for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
-            {
-                if (Card.PlayerIndex != SubmitterPlayerIndex)
-                {
-                    if (!Revealed.Contains(Card.PlayerAlphabet))
-                    {
-                        bAllOthersRevealed = false;
-                        break;
-                    }
-                }
-            }
-
-            if (bAllOthersRevealed)
-            {
-                InstantWinners.AddUnique(SubmitterPlayerIndex);
-            }
         }
 
-        // 2. 제출한 본인(SubmitterPlayerIndex)에게만 결과 RPC 전송
+        // 2. 제출한 본인(SubmitterPlayerIndex)에게 유추 성공/실패 결과 RPC 전송
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
@@ -407,68 +386,13 @@ void ATOGameMode::ProcessAllGuessSubmissions()
         }
     }
 
+    // 3. 제출 대기열 초기화
     PendingGuessSubmissions.Empty();
     SubmittedPlayerIndices.Empty();
 
-    // 단일 유추로 모든 타인 카드를 밝혀낸 승자가 발생한 경우 즉시 승리 처리
-    if (InstantWinners.Num() > 0)
-    {
-        bRoundHasWinner = true;
-        TArray<FString> WinnerNames;
-
-        // 1. 승자 점수 반영 및 닉네임 수집
-        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-        {
-            ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
-            if (TOPC && InstantWinners.Contains(TOPC->AssignedPlayerIndex))
-            {
-                if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
-                {
-                    TOPS->AddScorePoints(1);
-
-                    // PlayerState에서 닉네임 추출 (CustomPlayerName이 비어있을 경우 기본 이름 사용)
-                    FString Name = TOPS->GetCustomPlayerName();
-                    if (Name.IsEmpty())
-                    {
-                        Name = TOPS->GetPlayerName();
-                    }
-                    WinnerNames.Add(Name);
-                }
-            }
-        }
-
-        // 2. 모든 접속 중인 클라이언트에 점수판/메인 UI 갱신
-        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-        {
-            if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
-            {
-                TOPC->Client_UpdateMainUI();
-            }
-        }
-
-        // 3. 다수 승자 닉네임 배열을 전체 클라이언트에 멀티캐스트 브로드캐스트
-        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-        {
-            if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
-            {
-                // 각 PlayerController마다 Multicast를 실행하여 모든 클라이언트에 확실히 뷰포트 생성을 전파
-                TOPC->Multicast_ShowCorrectNotice(WinnerNames);
-            }
-        }
-
-        // 4. 3초 연출 후 라운드 종료 타이머 세팅 (첫 번째 승자 인덱스 또는 대표 인덱스 전달)
-        int32 PrimaryWinnerIndex = InstantWinners[0];
-        FTimerHandle NoticeTimerHandle;
-        GetWorldTimerManager().SetTimer(NoticeTimerHandle, FTimerDelegate::CreateLambda([this, PrimaryWinnerIndex]()
-        {
-            EndRound(PrimaryWinnerIndex);
-        }), 3.0f, false);
-    }
-    else
-    {
-        CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
-        BroadcastUIUpdate();
-    }
+    // 4. 유추 단계 종료 후 수식 제출 페이즈로 전환 및 UI 전파
+    CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
+    BroadcastUIUpdate();
 }
 
 // 모든 플레이어의 UI 업데이트 함수
