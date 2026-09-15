@@ -1188,24 +1188,34 @@ void ATOPlayerController::UpdateScoreBoardUI()
 
 		if (ChildWidget)
 		{
+			// 1. Nickname이 비어있을 경우 기본값 지정
+			FString DisplayName = Nickname;
+			if (DisplayName.IsEmpty())
+			{
+				DisplayName = TEXT("Player"); // 닉네임을 불러오지 못했을 때 표시될 기본 이름
+			}
+
+			// 2. TextBlock 위젯 검색
 			UTextBlock* PlayerText = Cast<UTextBlock>(ChildWidget->GetWidgetFromName(FName(TEXT("PlayerText"))));
 			UTextBlock* ScoreText = Cast<UTextBlock>(ChildWidget->GetWidgetFromName(FName(TEXT("ScoreText"))));
 
+			// GetWidgetFromName으로 찾지 못했을 경우 위젯 트리 수동 탐색
 			if (!PlayerText || !ScoreText)
 			{
-				if (ChildWidget->WidgetTree)
+				if (UWidgetTree* Tree = ChildWidget->WidgetTree)
 				{
 					TArray<UWidget*> ChildWidgets;
-					ChildWidget->WidgetTree->GetAllWidgets(ChildWidgets);
+					Tree->GetAllWidgets(ChildWidgets);
 					for (UWidget* W : ChildWidgets)
 					{
 						if (UTextBlock* TB = Cast<UTextBlock>(W))
 						{
-							if (!PlayerText && TB->GetName().Equals(TEXT("PlayerText"), ESearchCase::IgnoreCase))
+							FString NameStr = TB->GetName();
+							if (!PlayerText && (NameStr.Contains(TEXT("Player")) || NameStr.Contains(TEXT("Name"))))
 							{
 								PlayerText = TB;
 							}
-							else if (!ScoreText && TB->GetName().Equals(TEXT("ScoreText"), ESearchCase::IgnoreCase))
+							else if (!ScoreText && NameStr.Contains(TEXT("Score")))
 							{
 								ScoreText = TB;
 							}
@@ -1214,27 +1224,17 @@ void ATOPlayerController::UpdateScoreBoardUI()
 				}
 			}
 
+			// 3. PlayerText에 "닉네임 :" 형태로 적용
 			if (PlayerText)
 			{
-				PlayerText->SetText(FText::FromString(Nickname));
+				FString FormattedText = FString::Printf(TEXT("%s : "), *DisplayName);
+				PlayerText->SetText(FText::FromString(FormattedText));
 			}
+
+			// 4. ScoreText에 점수 적용
 			if (ScoreText)
 			{
 				ScoreText->SetText(FText::AsNumber(Score));
-			}
-
-			// 혹시 WBP_PlayerScore 자체에 SetPlayerScoreInfo 블루프린트 함수가 있다면 그것도 호출
-			if (UFunction* SetInfoFunc = ChildWidget->FindFunction(FName(TEXT("SetPlayerScoreInfo"))))
-			{
-				struct FPlayerScoreParams
-				{
-					FText PlayerName;
-					int32 InScore;
-				};
-				FPlayerScoreParams Params;
-				Params.PlayerName = FText::FromString(Nickname);
-				Params.InScore = Score;
-				ChildWidget->ProcessEvent(SetInfoFunc, &Params);
 			}
 		}
 	}
