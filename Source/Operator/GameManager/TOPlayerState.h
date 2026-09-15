@@ -49,8 +49,14 @@ protected:
 	FString PlayerAlphabet;
 
 	// [신규 추가] 플레이어 누적 점수
-	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "TO|PlayerState")
+	UPROPERTY(ReplicatedUsing = OnRep_PlayerScore, VisibleAnywhere, BlueprintReadOnly, Category = "TO|PlayerState")
 	int32 PlayerScore = 0;
+
+	UFUNCTION()
+	void OnRep_PlayerScore();
+
+	virtual void OnRep_Score() override;
+	virtual void OnRep_PlayerName() override;
 
 // --------------------------닉네임 파트 --------------------------------
 public:

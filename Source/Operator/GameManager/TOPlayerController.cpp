@@ -13,6 +13,7 @@
 #include "TOGameInstance.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
+#include "Components/VerticalBox.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UObjectIterator.h"
@@ -21,6 +22,12 @@
 ATOPlayerController::ATOPlayerController()
 {
 	bReplicates = true;
+
+	static ConstructorHelpers::FClassFinder<UUserWidget> PlayerScoreWidgetFinder(TEXT("/Game/UI/InGame/SubWidget/WBP_PlayerScore.WBP_PlayerScore_C"));
+	if (PlayerScoreWidgetFinder.Succeeded())
+	{
+		PlayerScoreWidgetClass = PlayerScoreWidgetFinder.Class;
+	}
 }
 
 
@@ -76,6 +83,15 @@ void ATOPlayerController::BeginPlay()
 
 	// 대기실 환경설정 버튼 등 자동 바인딩
 	SetupWaitingGameBindings();
+
+	// 방 입장 시 메인 UI 및 스코어보드 갱신
+	Client_UpdateMainUI();
+
+	// 방 입장 직후 PlayerState 복제 지연에 대비한 추가 갱신 타이머
+	FTimerHandle UpdateMainUITimer1;
+	GetWorldTimerManager().SetTimer(UpdateMainUITimer1, this, &ATOPlayerController::Client_UpdateMainUI, 0.5f, false);
+	FTimerHandle UpdateMainUITimer2;
+	GetWorldTimerManager().SetTimer(UpdateMainUITimer2, this, &ATOPlayerController::Client_UpdateMainUI, 1.5f, false);
 }
 
 void ATOPlayerController::OnPossess(APawn* InPawn)
@@ -265,6 +281,7 @@ void ATOPlayerController::Multicast_UpdateMainUI_Implementation()
 	else if (IsLocalController())
 	{
 		K2_UpdateMainUI();
+		UpdateScoreBoardUI();
 	}
 }
 
@@ -273,6 +290,7 @@ void ATOPlayerController::Client_UpdateMainUI_Implementation()
 	if (IsLocalController())
 	{
 		K2_UpdateMainUI();
+		UpdateScoreBoardUI();
 	}
 }
 
@@ -479,6 +497,9 @@ void ATOPlayerController::Client_OnGameStarted_Implementation()
 			CurrentSubWidget->AddToViewport(0); 
 			CurrentSubWidget->SetVisibility(bIsHUDVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 
+			// 이전 게임/라운드 유추 입력값 초기화
+			ResetSingleGuessUI();
+
 			// 게임 시작 시 기본 페이즈 1(수식 제출) 가시성 적용 및 숫자 카드 바인딩
 			UpdateStartGamePhaseVisibility(ETOGamePhase::SubmittingFormulas);
 			SetupNumberCardBindings();
@@ -496,6 +517,8 @@ void ATOPlayerController::Client_OnGameEnded_Implementation()
 		CurrentSubWidget->RemoveFromParent();
 		CurrentSubWidget = nullptr;
 	}
+
+	NumberCardButtonMap.Empty();
 
 	// WaitingGame 위젯을 Viewport에 직접 생성하여 덮어 씌움 (Z-Order 0: InGameMainWidget(10) 뒤에 배치)
 	if (WaitingGameWidgetClass)
@@ -551,6 +574,7 @@ void ATOPlayerController::Multicast_BroadcastChatMessage_Implementation(const FS
 	if (IsLocalController())
 	{
 		K2_AddChatMessageToUI(SenderName, Message);
+		AdjustChatTextLayout();
 	}
 }
 
@@ -670,12 +694,16 @@ void ATOPlayerController::Client_ReceiveGuessResult_Implementation(bool bIsMatch
 	UE_LOG(LogTemp, Warning, TEXT("[Client RPC] bIsMatch: %s, Alphabet: %s, Val: %d"), 
 		bIsMatch ? TEXT("TRUE") : TEXT("FALSE"), *TargetAlphabet, RevealedVal);
 	
+	ResetSingleGuessUI();
 	K2_OnReceiveGuessResult(bIsMatch, TargetAlphabet, RevealedVal);
 }
 
 void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)
 {
 	if (!IsLocalController() || !CurrentSubWidget) return;
+
+	// 페이즈 전환 시 이전 단일카드 유추 입력값(NumberTXT, PlayerTXT, SelectedSingleNumber 등) 초기화
+	ResetSingleGuessUI();
 
 	// Phase 1: SubmittingFormulas (정답 제출 턴 / 수식 영역 맞추기)
 	// - Btn_SelectPlayer, Btn_SelectNumber, TextBlock_5: 비활성화 (Collapsed)
@@ -949,6 +977,8 @@ void ATOPlayerController::SetupNumberCardBindings()
 {
 	if (!CurrentSubWidget || !CurrentSubWidget->WidgetTree) return;
 
+	NumberCardButtonMap.Empty();
+
 	TArray<UWidget*> AllWidgets;
 	CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
 
@@ -1072,5 +1102,270 @@ void ATOPlayerController::OnAnyNumberCardButtonClicked()
 	if (ClickedCardNum >= 0)
 	{
 		OnCardNumberSelected(ClickedCardNum);
+	}
+}
+
+void ATOPlayerController::UpdateScoreBoardUI()
+{
+	if (!IsLocalController() || !CurrentInGameMainWidget) return;
+
+	UVerticalBox* PlayerScoreBox = Cast<UVerticalBox>(CurrentInGameMainWidget->GetWidgetFromName(FName(TEXT("PlayerScore"))));
+	if (!PlayerScoreBox && CurrentInGameMainWidget->WidgetTree)
+	{
+		TArray<UWidget*> AllWidgets;
+		CurrentInGameMainWidget->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (UVerticalBox* VB = Cast<UVerticalBox>(W))
+			{
+				if (VB->GetName().Equals(TEXT("PlayerScore"), ESearchCase::IgnoreCase))
+				{
+					PlayerScoreBox = VB;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!PlayerScoreBox) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	AGameStateBase* GS = World->GetGameState();
+	if (!GS) return;
+
+	if (!PlayerScoreWidgetClass)
+	{
+		PlayerScoreWidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/UI/InGame/SubWidget/WBP_PlayerScore.WBP_PlayerScore_C"));
+	}
+
+	// 유효한 ATOPlayerState 수집
+	TArray<ATOPlayerState*> Players;
+	for (APlayerState* RawPS : GS->PlayerArray)
+	{
+		if (ATOPlayerState* TOPS = Cast<ATOPlayerState>(RawPS))
+		{
+			Players.Add(TOPS);
+		}
+	}
+
+	// AssignedPlayerIndex 순으로 정렬 (0, 1, 2...)
+	Players.Sort([](const ATOPlayerState& A, const ATOPlayerState& B) {
+		return A.GetAssignedPlayerIndex() < B.GetAssignedPlayerIndex();
+	});
+
+	// 각 플레이어별로 WBP_PlayerScore 갱신 또는 추가
+	for (int32 i = 0; i < Players.Num(); ++i)
+	{
+		ATOPlayerState* PS = Players[i];
+		if (!PS) continue;
+
+		FString Nickname = PS->GetCustomPlayerName();
+		if (Nickname.IsEmpty())
+		{
+			Nickname = PS->GetPlayerName();
+		}
+		if (Nickname.IsEmpty())
+		{
+			Nickname = FString::Printf(TEXT("Player %d"), PS->GetAssignedPlayerIndex() + 1);
+		}
+		const int32 Score = PS->GetPlayerScore();
+
+		UUserWidget* ChildWidget = nullptr;
+		if (i < PlayerScoreBox->GetChildrenCount())
+		{
+			ChildWidget = Cast<UUserWidget>(PlayerScoreBox->GetChildAt(i));
+		}
+		else if (PlayerScoreWidgetClass)
+		{
+			ChildWidget = CreateWidget<UUserWidget>(this, PlayerScoreWidgetClass);
+			if (ChildWidget)
+			{
+				PlayerScoreBox->AddChild(ChildWidget);
+			}
+		}
+
+		if (ChildWidget)
+		{
+			UTextBlock* PlayerText = Cast<UTextBlock>(ChildWidget->GetWidgetFromName(FName(TEXT("PlayerText"))));
+			UTextBlock* ScoreText = Cast<UTextBlock>(ChildWidget->GetWidgetFromName(FName(TEXT("ScoreText"))));
+
+			if (!PlayerText || !ScoreText)
+			{
+				if (ChildWidget->WidgetTree)
+				{
+					TArray<UWidget*> ChildWidgets;
+					ChildWidget->WidgetTree->GetAllWidgets(ChildWidgets);
+					for (UWidget* W : ChildWidgets)
+					{
+						if (UTextBlock* TB = Cast<UTextBlock>(W))
+						{
+							if (!PlayerText && TB->GetName().Equals(TEXT("PlayerText"), ESearchCase::IgnoreCase))
+							{
+								PlayerText = TB;
+							}
+							else if (!ScoreText && TB->GetName().Equals(TEXT("ScoreText"), ESearchCase::IgnoreCase))
+							{
+								ScoreText = TB;
+							}
+						}
+					}
+				}
+			}
+
+			if (PlayerText)
+			{
+				PlayerText->SetText(FText::FromString(Nickname));
+			}
+			if (ScoreText)
+			{
+				ScoreText->SetText(FText::AsNumber(Score));
+			}
+
+			// 혹시 WBP_PlayerScore 자체에 SetPlayerScoreInfo 블루프린트 함수가 있다면 그것도 호출
+			if (UFunction* SetInfoFunc = ChildWidget->FindFunction(FName(TEXT("SetPlayerScoreInfo"))))
+			{
+				struct FPlayerScoreParams
+				{
+					FText PlayerName;
+					int32 InScore;
+				};
+				FPlayerScoreParams Params;
+				Params.PlayerName = FText::FromString(Nickname);
+				Params.InScore = Score;
+				ChildWidget->ProcessEvent(SetInfoFunc, &Params);
+			}
+		}
+	}
+
+	// 불필요한 남은 위젯 제거
+	while (PlayerScoreBox->GetChildrenCount() > Players.Num())
+	{
+		PlayerScoreBox->RemoveChildAt(PlayerScoreBox->GetChildrenCount() - 1);
+	}
+}
+
+void ATOPlayerController::ResetSingleGuessUI()
+{
+	if (!IsLocalController() || !CurrentSubWidget) return;
+
+	// 1. NumberTXT 텍스트 초기화
+	UTextBlock* NumberTXT = Cast<UTextBlock>(CurrentSubWidget->GetWidgetFromName(FName(TEXT("NumberTXT"))));
+	if (!NumberTXT && CurrentSubWidget->WidgetTree)
+	{
+		TArray<UWidget*> AllWidgets;
+		CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (UTextBlock* TB = Cast<UTextBlock>(W))
+			{
+				if (TB->GetName().Equals(TEXT("NumberTXT"), ESearchCase::IgnoreCase))
+				{
+					NumberTXT = TB;
+					break;
+				}
+			}
+		}
+	}
+	if (NumberTXT)
+	{
+		NumberTXT->SetText(FText::GetEmpty());
+	}
+
+	// 2. PlayerTXT 텍스트 초기화
+	UTextBlock* PlayerTXT = Cast<UTextBlock>(CurrentSubWidget->GetWidgetFromName(FName(TEXT("PlayerTXT"))));
+	if (!PlayerTXT && CurrentSubWidget->WidgetTree)
+	{
+		TArray<UWidget*> AllWidgets;
+		CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (UTextBlock* TB = Cast<UTextBlock>(W))
+			{
+				if (TB->GetName().Equals(TEXT("PlayerTXT"), ESearchCase::IgnoreCase))
+				{
+					PlayerTXT = TB;
+					break;
+				}
+			}
+		}
+	}
+	if (PlayerTXT)
+	{
+		PlayerTXT->SetText(FText::GetEmpty());
+	}
+
+	// 3. SelectedSingleNumber / SelectedNumber 프로퍼티 -1로 초기화
+	if (FIntProperty* SelProp = CastField<FIntProperty>(CurrentSubWidget->GetClass()->FindPropertyByName(FName(TEXT("SelectedSingleNumber")))))
+	{
+		SelProp->SetPropertyValue_InContainer(CurrentSubWidget, -1);
+	}
+	if (FIntProperty* SelProp2 = CastField<FIntProperty>(CurrentSubWidget->GetClass()->FindPropertyByName(FName(TEXT("SelectedNumber")))))
+	{
+		SelProp2->SetPropertyValue_InContainer(CurrentSubWidget, -1);
+	}
+
+	// 4. SelectedAlphabet 프로퍼티 빈 문자열로 초기화
+	if (FStrProperty* AlphaProp = CastField<FStrProperty>(CurrentSubWidget->GetClass()->FindPropertyByName(FName(TEXT("SelectedAlphabet")))))
+	{
+		AlphaProp->SetPropertyValue_InContainer(CurrentSubWidget, FString());
+	}
+}
+
+void ATOPlayerController::AdjustChatTextLayout()
+{
+	if (!IsLocalController() || !CurrentInGameMainWidget) return;
+
+	UVerticalBox* ChattingBox = Cast<UVerticalBox>(CurrentInGameMainWidget->GetWidgetFromName(FName(TEXT("ChattingBox"))));
+	if (!ChattingBox && CurrentInGameMainWidget->WidgetTree)
+	{
+		TArray<UWidget*> AllWidgets;
+		CurrentInGameMainWidget->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (UVerticalBox* VB = Cast<UVerticalBox>(W))
+			{
+				if (VB->GetName().Equals(TEXT("ChattingBox"), ESearchCase::IgnoreCase))
+				{
+					ChattingBox = VB;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!ChattingBox) return;
+
+	// 최대 50개 유지
+	while (ChattingBox->GetChildrenCount() > 50)
+	{
+		ChattingBox->RemoveChildAt(0);
+	}
+
+	// 모든 채팅 메시지 위젯의 폰트 크기를 살짝 축소하고 AutoWrapText 활성화
+	for (int32 i = 0; i < ChattingBox->GetChildrenCount(); ++i)
+	{
+		if (UUserWidget* MsgWidget = Cast<UUserWidget>(ChattingBox->GetChildAt(i)))
+		{
+			if (MsgWidget->WidgetTree)
+			{
+				TArray<UWidget*> AllWidgets;
+				MsgWidget->WidgetTree->GetAllWidgets(AllWidgets);
+				for (UWidget* W : AllWidgets)
+				{
+					if (UTextBlock* TB = Cast<UTextBlock>(W))
+					{
+						TB->SetAutoWrapText(true);
+						FSlateFontInfo FontInfo = TB->GetFont();
+						if (FontInfo.Size > 12.0f)
+						{
+							FontInfo.Size = 12.0f;
+							TB->SetFont(FontInfo);
+						}
+					}
+				}
+			}
+		}
 	}
 }

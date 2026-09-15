@@ -14,8 +14,31 @@
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/Base64.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "Interfaces/OnlineExternalUIInterface.h"
+
+namespace
+{
+    // Steam OSS에서 다국어(한글 등) 방 이름이 ANSI 변환으로 인해 깨지는 현상을 방지하기 위한 Base64 헬퍼
+    FString EncodeRoomNameForSession(const FString& InRoomName)
+    {
+        return TEXT("B64_") + FBase64::Encode(InRoomName);
+    }
+
+    FString DecodeRoomNameFromSession(const FString& InRawName)
+    {
+        if (InRawName.StartsWith(TEXT("B64_")))
+        {
+            FString Decoded;
+            if (FBase64::Decode(InRawName.RightChop(4), Decoded))
+            {
+                return Decoded;
+            }
+        }
+        return InRawName;
+    }
+}
 
 UTOGameInstance::UTOGameInstance()
 {
@@ -637,7 +660,7 @@ void UTOGameInstance::CreateMySession(const FString& Password, const FString& In
 
     SessionSettings.Set(
         FName(TEXT("ROOM_NAME")),
-        FinalRoomName,
+        EncodeRoomNameForSession(FinalRoomName),
         EOnlineDataAdvertisementType::ViaOnlineServiceAndPing
     );
 
@@ -1113,6 +1136,7 @@ void UTOGameInstance::OnFindSessionsComplete(
         const FOnlineSessionSearchResult& Result = Results[i];
         FString RName, Pass, MType, HostIP;
         Result.Session.SessionSettings.Get(FName(TEXT("ROOM_NAME")), RName);
+        RName = DecodeRoomNameFromSession(RName);
         Result.Session.SessionSettings.Get(FName(TEXT("ROOM_PASSWORD")), Pass);
         Result.Session.SessionSettings.Get(FName(TEXT("MATCH_TYPE")), MType);
         Result.Session.SessionSettings.Get(FName(TEXT("HOST_IP")), HostIP);
@@ -1145,6 +1169,7 @@ void UTOGameInstance::OnFindSessionsComplete(
             const FOnlineSessionSearchResult& Result = Results[i];
             FString RName, Pass;
             Result.Session.SessionSettings.Get(FName(TEXT("ROOM_NAME")), RName);
+            RName = DecodeRoomNameFromSession(RName);
             Result.Session.SessionSettings.Get(FName(TEXT("ROOM_PASSWORD")), Pass);
 
             FString CleanPass = Pass.TrimStartAndEnd();
@@ -1650,6 +1675,8 @@ FString UTOGameInstance::GetFoundRoomName(int32 Index) const
         FName(TEXT("ROOM_NAME")),
         FoundRoomName
     );
+
+    FoundRoomName = DecodeRoomNameFromSession(FoundRoomName);
 
     if (FoundRoomName.IsEmpty())
     {

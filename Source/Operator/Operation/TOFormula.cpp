@@ -110,36 +110,70 @@ int32 UTOFormula::EvaluateFormula(const TArray<int32>& Numbers, const TArray<ETO
 // 전체 정답 검증 (이미 공개된 알파벳 슬롯은 검증 통과 처리)
 bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const FTOGuessAllInputData& InputData, const TArray<FString>& RevealedAlphabets)
 {
-    // 서버가 가진 실제 카드 정답 순회
+    // 1. 미공개 타인 카드 목록 수집 (수식 내 카드 순서 유지)
+    TArray<const FTOPlayerCardData*> UnrevealedCards;
     for (const FTOPlayerCardData& RealCard : FormulaData.PlayerCards)
     {
-        // 1. 제출자 본인의 카드는 검증 대상에서 제외
+        // 제출자 본인의 카드는 검증 대상 제외
         if (RealCard.PlayerIndex == InputData.SubmittingPlayerIndex)
         {
             continue;
         }
 
-        // 2. 이미 유추 성공하여 공개된 알파벳(Slot으로 변환된 카드)은 이미 정답이 확인되었으므로 통과
+        // 이미 유추 성공하여 공개된 알파벳(Slot으로 변환된 카드)은 제외
         if (RevealedAlphabets.Contains(RealCard.PlayerAlphabet))
         {
             continue;
         }
 
-        // 3. 아직 공개되지 않은 알파벳의 경우: 제출한 입력값에서 일치하는지 확인
-        const FTOGuessedPair* FoundPair = InputData.GuessedPlayerValues.FindByPredicate(
-            [&RealCard](const FTOGuessedPair& Pair)
-            {
-                return Pair.Alphabet == RealCard.PlayerAlphabet;
-            });
+        UnrevealedCards.Add(&RealCard);
+    }
 
-        // 해당 알파벳 입력값이 누락되었거나 숫자가 틀린 경우 실패
-        if (!FoundPair || FoundPair->GuessedValue != RealCard.CardValue)
+    // 미공개 카드가 없으면 모든 타인 카드가 이미 밝혀진 상태이므로 즉시 정답/승리
+    if (UnrevealedCards.Num() == 0)
+    {
+        return true;
+    }
+
+    // [검증 방식 1: 순서/위치 기반 NumberBtn 값 일치 검증]
+    // FormulaBox 내 WBP_NumberBtn 순서대로 GuessedPlayerValues에 담겨 전송되므로,
+    // GuessedPlayerValues 개수가 미공개 카드 개수와 같고 각 순서의 입력값과 정답이 일치하는지 확인
+    if (InputData.GuessedPlayerValues.Num() == UnrevealedCards.Num())
+    {
+        bool bAllValuesMatchInOrder = true;
+        for (int32 i = 0; i < UnrevealedCards.Num(); ++i)
         {
-            return false;
+            if (InputData.GuessedPlayerValues[i].GuessedValue != UnrevealedCards[i]->CardValue)
+            {
+                bAllValuesMatchInOrder = false;
+                break;
+            }
+        }
+
+        if (bAllValuesMatchInOrder)
+        {
+            return true;
         }
     }
 
-    return true; // 모두 일치하거나 모든 알파벳이 이미 밝혀진 경우(알파벳 없으면) 정답/승리!
+    // [검증 방식 2: 기존 Alphabet 키 기반 검증 (Fallback)]
+    bool bAllAlphabetMatch = true;
+    for (const FTOPlayerCardData* UnrevealedCard : UnrevealedCards)
+    {
+        const FTOGuessedPair* FoundPair = InputData.GuessedPlayerValues.FindByPredicate(
+            [UnrevealedCard](const FTOGuessedPair& Pair)
+            {
+                return Pair.Alphabet == UnrevealedCard->PlayerAlphabet;
+            });
+
+        if (!FoundPair || FoundPair->GuessedValue != UnrevealedCard->CardValue)
+        {
+            bAllAlphabetMatch = false;
+            break;
+        }
+    }
+
+    return bAllAlphabetMatch;
 }
 
 

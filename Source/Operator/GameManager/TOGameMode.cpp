@@ -328,6 +328,8 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
 
 void ATOGameMode::ProcessAllGuessSubmissions()
 {
+    TArray<int32> InstantWinners;
+
     for (const auto& Pair : PendingGuessSubmissions)
     {
         int32 SubmitterPlayerIndex = Pair.Key;
@@ -353,6 +355,26 @@ void ATOGameMode::ProcessAllGuessSubmissions()
 
             // 전원 UI 갱신 (B -> 1 로 변경되는 부분)
             BroadcastUIUpdate();
+
+            // 유추 성공 후 해당 제출자의 수식 내 타인 카드가 모두 밝혀졌는지 확인 (모든 버튼이 Slot으로 변경된 상태)
+            const TArray<FString>& Revealed = PlayerRevealedAlphabets[SubmitterPlayerIndex].RevealedAlphabets;
+            bool bAllOthersRevealed = true;
+            for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
+            {
+                if (Card.PlayerIndex != SubmitterPlayerIndex)
+                {
+                    if (!Revealed.Contains(Card.PlayerAlphabet))
+                    {
+                        bAllOthersRevealed = false;
+                        break;
+                    }
+                }
+            }
+
+            if (bAllOthersRevealed)
+            {
+                InstantWinners.AddUnique(SubmitterPlayerIndex);
+            }
         }
 
         // 2. 제출한 본인(SubmitterPlayerIndex)에게만 결과 RPC 전송
@@ -370,8 +392,47 @@ void ATOGameMode::ProcessAllGuessSubmissions()
     PendingGuessSubmissions.Empty();
     SubmittedPlayerIndices.Empty();
 
-    CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
-    BroadcastUIUpdate();
+    // 단일 유추로 모든 타인 카드를 밝혀낸 승자가 발생한 경우 즉시 승리 처리
+    if (InstantWinners.Num() > 0)
+    {
+        bRoundHasWinner = true;
+        int32 WinnerIndex = InstantWinners[0];
+
+        // 1. 승자 점수 반영
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
+            if (TOPC && InstantWinners.Contains(TOPC->AssignedPlayerIndex))
+            {
+                if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
+                {
+                    TOPS->AddScorePoints(1);
+                }
+            }
+        }
+
+        // 2. 모든 접속 중인 클라이언트에 점수판/메인 UI 갱신 및 정답 알림 브로드캐스트
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
+            {
+                TOPC->Client_UpdateMainUI();
+                TOPC->Client_ShowCorrectNotice(WinnerIndex);
+            }
+        }
+
+        // 3초 연출 후 라운드 종료 타이머 세팅
+        FTimerHandle NoticeTimerHandle;
+        GetWorldTimerManager().SetTimer(NoticeTimerHandle, FTimerDelegate::CreateLambda([this, WinnerIndex]()
+        {
+            EndRound(WinnerIndex);
+        }), 3.0f, false);
+    }
+    else
+    {
+        CurrentGamePhase = ETOGamePhase::SubmittingFormulas;
+        BroadcastUIUpdate();
+    }
 }
 
 // 모든 플레이어의 UI 업데이트 함수

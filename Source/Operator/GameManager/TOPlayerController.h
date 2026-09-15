@@ -153,6 +153,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "TO|UI")
 	void OpenSettingsWidget(UUserWidget* SettingsWidgetInstance);
 
+	// WBP_InGameMain 스코어보드 갱신 함수 (PlayerScore VerticalBox 내의 WBP_PlayerScore 위젯들 갱신)
+	UFUNCTION(BlueprintCallable, Category = "TO|UI")
+	void UpdateScoreBoardUI();
+
+	// 단일 카드 유추 턴 입력 UI 초기화 (NumberTXT, PlayerTXT, 선택 변수 리셋)
+	UFUNCTION(BlueprintCallable, Category = "TO|UI")
+	void ResetSingleGuessUI();
+
+	// 채팅 메시지 위젯 폰트 크기 및 자동 줄바꿈 조정
+	void AdjustChatTextLayout();
+
 protected:
 	FTimerHandle SettingsWidgetMonitorTimerHandle;
 	TWeakObjectPtr<UUserWidget> MonitoredSettingsWidget;
@@ -198,6 +209,10 @@ protected:
 	// 3. 채팅 메시지 전용 소형 위젯 클래스
 	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
 	TSubclassOf<UUserWidget> ChatMessageWidgetClass; // WBP_ChatMessage
+
+	// 4. 스코어보드 플레이어 정보 위젯 클래스
+	UPROPERTY(EditDefaultsOnly, Category = "TO|UI")
+	TSubclassOf<UUserWidget> PlayerScoreWidgetClass; // WBP_PlayerScore
 	
 	// 현재 HUD 표시 및 UI 입력 모드 상태 관리 플래그
 	bool bIsHUDVisible = true;

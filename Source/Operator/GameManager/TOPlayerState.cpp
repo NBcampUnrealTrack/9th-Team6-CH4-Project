@@ -1,4 +1,5 @@
 #include "TOPlayerState.h"
+#include "TOPlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "../Character/TOCharacter.h"
 
@@ -40,6 +41,49 @@ void ATOPlayerState::AddScorePoints(int32 InScore)
 	{
 		PlayerScore += InScore;
 		SetScore(PlayerScore); // APlayerState 기본 제공 Score 변수도 동기화
+
+		if (UWorld* World = GetWorld())
+		{
+			if (ATOPlayerController* LocalPC = Cast<ATOPlayerController>(World->GetFirstPlayerController()))
+			{
+				LocalPC->UpdateScoreBoardUI();
+			}
+		}
+	}
+}
+
+void ATOPlayerState::OnRep_PlayerScore()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (ATOPlayerController* LocalPC = Cast<ATOPlayerController>(World->GetFirstPlayerController()))
+		{
+			LocalPC->UpdateScoreBoardUI();
+		}
+	}
+}
+
+void ATOPlayerState::OnRep_Score()
+{
+	Super::OnRep_Score();
+	if (UWorld* World = GetWorld())
+	{
+		if (ATOPlayerController* LocalPC = Cast<ATOPlayerController>(World->GetFirstPlayerController()))
+		{
+			LocalPC->UpdateScoreBoardUI();
+		}
+	}
+}
+
+void ATOPlayerState::OnRep_PlayerName()
+{
+	Super::OnRep_PlayerName();
+	if (UWorld* World = GetWorld())
+	{
+		if (ATOPlayerController* LocalPC = Cast<ATOPlayerController>(World->GetFirstPlayerController()))
+		{
+			LocalPC->UpdateScoreBoardUI();
+		}
 	}
 }
 
@@ -60,6 +104,14 @@ void ATOPlayerState::SetPlayerNameString(const FString& NewName)
 			Char->UpdateNameTagWidget(NewName);
 		}
 	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (ATOPlayerController* LocalPC = Cast<ATOPlayerController>(World->GetFirstPlayerController()))
+		{
+			LocalPC->UpdateScoreBoardUI();
+		}
+	}
 }
 
 // [클라이언트에서 실행] 서버로부터 닉네임 값이 동기화되면 자동으로 실행
@@ -72,6 +124,14 @@ void ATOPlayerState::OnRep_PlayerNameString()
 		if (ATOCharacter* Char = Cast<ATOCharacter>(TargetPawn))
 		{
 			Char->UpdateNameTagWidget(PlayerNameString);
+		}
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (ATOPlayerController* LocalPC = Cast<ATOPlayerController>(World->GetFirstPlayerController()))
+		{
+			LocalPC->UpdateScoreBoardUI();
 		}
 	}
 }
