@@ -263,7 +263,6 @@ void ATOGameMode::CheckAllFormulasSubmitted()
     }
 }
 
-// 
 void ATOGameMode::ProcessAllFormulaSubmissions()
 {
     TArray<int32> WinnersThisRound;
@@ -287,9 +286,9 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
     if (WinnersThisRound.Num() > 0)
     {
         bRoundHasWinner = true;
-        int32 WinnerIndex = WinnersThisRound[0];
+        TArray<FString> WinnerNames;
 
-        // 1. 승자 점수 반영
+        // 1. 승자 점수 반영 및 닉네임 수집
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
@@ -298,24 +297,43 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
                 if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
                 {
                     TOPS->AddScorePoints(1);
+
+                    // PlayerState에서 닉네임 추출
+                    FString Name = TOPS->GetCustomPlayerName();
+                    if (Name.IsEmpty())
+                    {
+                        Name = TOPS->GetPlayerName();
+                    }
+                    WinnerNames.Add(Name);
                 }
             }
         }
 
-        // 2. 모든 접속 중인 클라이언트에 점수판/메인 UI 갱신 및 정답 알림 브로드캐스트
+        // 2. 모든 접속 중인 클라이언트에 점수판/메인 UI 갱신
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
             {
                 TOPC->Client_UpdateMainUI();
-                TOPC->Client_ShowCorrectNotice(WinnerIndex);
             }
         }
-        //3초 연출 후 라운드 종료 타이머 세팅
-        FTimerHandle NoticeTimerHandle;
-        GetWorldTimerManager().SetTimer(NoticeTimerHandle, FTimerDelegate::CreateLambda([this, WinnerIndex]()
+
+        // 3. 다수 승자 닉네임 배열을 전체 클라이언트에 멀티캐스트 브로드캐스트
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
-            EndRound(WinnerIndex);
+            if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
+            {
+                // 각 PlayerController마다 Multicast를 실행하여 모든 클라이언트에 확실히 뷰포트 생성을 전파
+                TOPC->Multicast_ShowCorrectNotice(WinnerNames);
+            }
+        }
+
+        // 4. 3초 연출 후 라운드 종료 타이머 세팅 (대표 승자 인덱스 전달)
+        int32 PrimaryWinnerIndex = WinnersThisRound[0];
+        FTimerHandle NoticeTimerHandle;
+        GetWorldTimerManager().SetTimer(NoticeTimerHandle, FTimerDelegate::CreateLambda([this, PrimaryWinnerIndex]()
+        {
+            EndRound(PrimaryWinnerIndex);
         }), 3.0f, false);
     }
     else
@@ -356,7 +374,7 @@ void ATOGameMode::ProcessAllGuessSubmissions()
             // 전원 UI 갱신 (B -> 1 로 변경되는 부분)
             BroadcastUIUpdate();
 
-            // 유추 성공 후 해당 제출자의 수식 내 타인 카드가 모두 밝혀졌는지 확인 (모든 버튼이 Slot으로 변경된 상태)
+            // 유추 성공 후 해당 제출자의 수식 내 타인 카드가 모두 밝혀졌는지 확인
             const TArray<FString>& Revealed = PlayerRevealedAlphabets[SubmitterPlayerIndex].RevealedAlphabets;
             bool bAllOthersRevealed = true;
             for (const FTOPlayerCardData& Card : CurrentServerCardData.PlayerCards)
@@ -381,7 +399,7 @@ void ATOGameMode::ProcessAllGuessSubmissions()
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
-            if (TOPC && TOPC->AssignedPlayerIndex == SubmitterPlayerIndex) // 👈 제출자 본인 검증
+            if (TOPC && TOPC->AssignedPlayerIndex == SubmitterPlayerIndex) // 제출자 본인 검증
             {
                 TOPC->Client_ReceiveGuessResult(bIsMatch, SingleGuessData.TargetAlphabet, RevealedVal);
                 break; // 본인을 찾았으므로 루프 탈출
@@ -396,9 +414,9 @@ void ATOGameMode::ProcessAllGuessSubmissions()
     if (InstantWinners.Num() > 0)
     {
         bRoundHasWinner = true;
-        int32 WinnerIndex = InstantWinners[0];
+        TArray<FString> WinnerNames;
 
-        // 1. 승자 점수 반영
+        // 1. 승자 점수 반영 및 닉네임 수집
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get());
@@ -407,25 +425,43 @@ void ATOGameMode::ProcessAllGuessSubmissions()
                 if (ATOPlayerState* TOPS = TOPC->GetPlayerState<ATOPlayerState>())
                 {
                     TOPS->AddScorePoints(1);
+
+                    // PlayerState에서 닉네임 추출 (CustomPlayerName이 비어있을 경우 기본 이름 사용)
+                    FString Name = TOPS->GetCustomPlayerName();
+                    if (Name.IsEmpty())
+                    {
+                        Name = TOPS->GetPlayerName();
+                    }
+                    WinnerNames.Add(Name);
                 }
             }
         }
 
-        // 2. 모든 접속 중인 클라이언트에 점수판/메인 UI 갱신 및 정답 알림 브로드캐스트
+        // 2. 모든 접속 중인 클라이언트에 점수판/메인 UI 갱신
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
             if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
             {
                 TOPC->Client_UpdateMainUI();
-                TOPC->Client_ShowCorrectNotice(WinnerIndex);
             }
         }
 
-        // 3초 연출 후 라운드 종료 타이머 세팅
-        FTimerHandle NoticeTimerHandle;
-        GetWorldTimerManager().SetTimer(NoticeTimerHandle, FTimerDelegate::CreateLambda([this, WinnerIndex]()
+        // 3. 다수 승자 닉네임 배열을 전체 클라이언트에 멀티캐스트 브로드캐스트
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         {
-            EndRound(WinnerIndex);
+            if (ATOPlayerController* TOPC = Cast<ATOPlayerController>(It->Get()))
+            {
+                // 각 PlayerController마다 Multicast를 실행하여 모든 클라이언트에 확실히 뷰포트 생성을 전파
+                TOPC->Multicast_ShowCorrectNotice(WinnerNames);
+            }
+        }
+
+        // 4. 3초 연출 후 라운드 종료 타이머 세팅 (첫 번째 승자 인덱스 또는 대표 인덱스 전달)
+        int32 PrimaryWinnerIndex = InstantWinners[0];
+        FTimerHandle NoticeTimerHandle;
+        GetWorldTimerManager().SetTimer(NoticeTimerHandle, FTimerDelegate::CreateLambda([this, PrimaryWinnerIndex]()
+        {
+            EndRound(PrimaryWinnerIndex);
         }), 3.0f, false);
     }
     else

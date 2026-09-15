@@ -117,15 +117,13 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
 	void K2_OnReceiveGuessResult(bool bIsMatch, const FString& TargetAlphabet, int32 RevealedVal);
 	
-	// 정답 연출 (전체 클라이언트 브로드캐스트용 Client RPC)
-	UFUNCTION(Client, Reliable)
-	void Client_ShowCorrectNotice(int32 WinnerPlayerIndex);
-
+	// 1. 단일 Multicast RPC 하나만 유지 (WinnerNames 배열 전달)
 	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_ShowCorrectNotice(int32 WinnerPlayerIndex);
-	
+	void Multicast_ShowCorrectNotice(const TArray<FString>& WinnerNames);
+
+	// 2. 블루프린트 연동 이벤트 (배열 전달)
 	UFUNCTION(BlueprintImplementableEvent, Category = "TO|UI")
-	void K2_ShowCorrectNotice(int32 WinnerPlayerIndex);
+	void K2_ShowCorrectNotice(const TArray<FString>& WinnerNames);
 
 	// 메인 위젯 갱신 요청 (전체 클라이언트 브로드캐스트용 Client RPC)
 	UFUNCTION(Client, Reliable)

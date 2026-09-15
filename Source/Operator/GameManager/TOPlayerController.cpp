@@ -294,77 +294,71 @@ void ATOPlayerController::Client_UpdateMainUI_Implementation()
 	}
 }
 
-void ATOPlayerController::Multicast_ShowCorrectNotice_Implementation(int32 WinnerPlayerIndex)
+void ATOPlayerController::Multicast_ShowCorrectNotice_Implementation(const TArray<FString>& WinnerNames)
 {
-	if (HasAuthority())
-	{
-		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-		{
-			if (ATOPlayerController* PC = Cast<ATOPlayerController>(It->Get()))
-			{
-				PC->Client_ShowCorrectNotice(WinnerPlayerIndex);
-			}
-		}
-	}
-	else if (IsLocalController())
-	{
-		Client_ShowCorrectNotice(WinnerPlayerIndex);
-	}
-}
+    // 로컬 컨트롤러를 가진 각 클라이언트 화면에서만 UI 연출 실행
+    if (IsLocalController())
+    {
+        // 1. 블루프린트 이벤트 호출 (WBP 생성 및 UI 애니메이션 실행용)
+        K2_ShowCorrectNotice(WinnerNames);
 
-void ATOPlayerController::Client_ShowCorrectNotice_Implementation(int32 WinnerPlayerIndex)
-{
-	if (IsLocalController())
-	{
-		K2_ShowCorrectNotice(WinnerPlayerIndex);
+        // 2. 닉네임 배열을 하나의 문자열로 결합 (예: "홍길동, 김철수")
+        FString CombinedNames = FString::Join(WinnerNames, TEXT(", "));
+        if (CombinedNames.IsEmpty())
+        {
+            CombinedNames = TEXT("Player");
+        }
 
-		const FString WinnerNickname = GetPlayerNicknameByIndex(WinnerPlayerIndex);
+        // 3. 위젯 텍스트 세팅 람다 함수
+        auto UpdateNoticeWidgetNickname = [this, CombinedNames]()
+        {
+            for (TObjectIterator<UUserWidget> It; It; ++It)
+            {
+                UUserWidget* Widget = *It;
+                if (Widget && Widget->GetWorld() == GetWorld())
+                {
+                    const FString WName = Widget->GetName();
+                    const FString CName = Widget->GetClass()->GetName();
+                    
+                    if (WName.Contains(TEXT("CorrectAnswerNotice")) || CName.Contains(TEXT("CorrectAnswerNotice")))
+                    {
+                        UTextBlock* TB = Cast<UTextBlock>(Widget->GetWidgetFromName(FName(TEXT("TB_PlayerName"))));
+                        
+                        // 직접 찾지 못했을 경우 트리를 탐색
+                        if (!TB && Widget->WidgetTree)
+                        {
+                            TArray<UWidget*> AllWidgets;
+                            Widget->WidgetTree->GetAllWidgets(AllWidgets);
+                            for (UWidget* W : AllWidgets)
+                            {
+                                if (UTextBlock* TextW = Cast<UTextBlock>(W))
+                                {
+                                    if (TextW->GetName().Equals(TEXT("TB_PlayerName"), ESearchCase::IgnoreCase))
+                                    {
+                                        TB = TextW;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
 
-		auto UpdateNoticeWidgetNickname = [this, WinnerNickname]()
-		{
-			for (TObjectIterator<UUserWidget> It; It; ++It)
-			{
-				UUserWidget* Widget = *It;
-				if (Widget && Widget->GetWorld() == GetWorld())
-				{
-					const FString WName = Widget->GetName();
-					const FString CName = Widget->GetClass()->GetName();
-					if (WName.Contains(TEXT("CorrectAnswerNotice")) || CName.Contains(TEXT("CorrectAnswerNotice")))
-					{
-						if (UTextBlock* TB = Cast<UTextBlock>(Widget->GetWidgetFromName(FName(TEXT("TB_PlayerName")))))
-						{
-							TB->SetText(FText::FromString(WinnerNickname));
-						}
-						else if (Widget->WidgetTree)
-						{
-							TArray<UWidget*> AllWidgets;
-							Widget->WidgetTree->GetAllWidgets(AllWidgets);
-							for (UWidget* W : AllWidgets)
-							{
-								if (UTextBlock* TextW = Cast<UTextBlock>(W))
-								{
-									if (TextW->GetName().Equals(TEXT("TB_PlayerName"), ESearchCase::IgnoreCase))
-									{
-										TextW->SetText(FText::FromString(WinnerNickname));
-										break;
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		};
+                        // 텍스트 블록에 "닉네임1, 닉네임2" 형태로 적용
+                        if (TB)
+                        {
+                            TB->SetText(FText::FromString(CombinedNames));
+                        }
+                    }
+                }
+            }
+        };
 
-		// 1) 즉시 반영
-		UpdateNoticeWidgetNickname();
-
-		// 2) 다음 틱에도 한 번 더 반영 (위젯 초기화 지연 방지)
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda(UpdateNoticeWidgetNickname));
-		}
-	}
+        // 즉시 반영 및 다음 틱 예방 반영
+        UpdateNoticeWidgetNickname();
+        if (UWorld* World = GetWorld())
+        {
+            World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda(UpdateNoticeWidgetNickname));
+        }
+    }
 }
 
 
