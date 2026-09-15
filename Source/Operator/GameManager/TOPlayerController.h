@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Framework/SlateDelegates.h"
+#include "Components/AudioComponent.h"
 #include "../Operation/TOTypes.h"
 #include "TOPlayerController.generated.h"
 
@@ -21,6 +22,7 @@ public:
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void AcknowledgePossession(APawn* P) override;
+	
 
 	// 변수 네트워크 복제(Replication) 등록을 위한 함수
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -32,6 +34,25 @@ public:
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "GameData")
 	int32 AssignedPlayerIndex = -1;
 
+	
+	// 게임모드에서 호출해 줄 BGM 전환 함수 (Client RPC)
+	UFUNCTION(Client, Reliable)
+	void Client_SwitchToInGameBGM();
+	
+	// --------------------- BGM -------------------------------------------
+	
+	// 대기실 BGM 컴포넌트 레퍼런스
+	UPROPERTY()
+	UAudioComponent* WaitingBGMComponent;
+
+	// 대기실 BGM 에셋
+	UPROPERTY(EditDefaultsOnly, Category = "Sound")
+	USoundBase* WaitingBGMSound;
+
+	// 인게임 BGM 에셋
+	UPROPERTY(EditDefaultsOnly, Category = "Sound")
+	USoundBase* InGameBGMSound;
+	
 
 	// ------------------- UI - Input Mode & On/Off 파트 -----------------------------
 

@@ -8,6 +8,7 @@
 #include "TOPlayerController.h"
 #include "TOPlayerState.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 #include "../Interactive/TOSpawnPoint.h"
 
 
@@ -405,9 +406,12 @@ void ATOGameMode::SetPlayerReady(ATOPlayerController* TargetPC, bool bReady)
             if (TOPC)
             {
                 TOPC->Client_OnGameStarted();
+                
+                // 클라이언트에게 브금 전환을 하라고 명령 (Client RPC 함수 생성 필요)
+                TOPC->Client_SwitchToInGameBGM();
             }
         }
-
+        
         StartNewRound(CurrentPlayerCount);
     }
 }

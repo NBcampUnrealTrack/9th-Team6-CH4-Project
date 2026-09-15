@@ -13,6 +13,7 @@
 #include "TOGameInstance.h"
 #include "Components/Button.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 #include "UObject/UObjectIterator.h"
 
 
@@ -25,6 +26,12 @@ ATOPlayerController::ATOPlayerController()
 void ATOPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	// 로컬 플레이어(실제 내 화면/스피커)인 경우에만 대기실 BGM 재생
+	if (IsLocalController() && WaitingBGMSound)
+	{
+		WaitingBGMComponent = UGameplayStatics::SpawnSound2D(this, WaitingBGMSound);
+	}
 
 	if (!IsLocalController()) return;
 
@@ -127,6 +134,21 @@ void ATOPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ATOPlayerController, AssignedPlayerIndex);
+}
+
+void ATOPlayerController::Client_SwitchToInGameBGM_Implementation()
+{
+	// 1. 대기실 BGM 정지
+	if (WaitingBGMComponent && WaitingBGMComponent->IsPlaying())
+	{
+		WaitingBGMComponent->Stop();
+	}
+
+	// 2. 인게임 BGM 재생
+	if (InGameBGMSound && IsLocalController())
+	{
+		UGameplayStatics::PlaySound2D(this, InGameBGMSound);
+	}
 }
 
 // IA 입력으로 호출되는 HUD 토글 함수
