@@ -231,13 +231,17 @@ void ATOGameMode::SubmitPlayerInput(ATOPlayerController* SenderController, const
     if (CurrentGamePhase == ETOGamePhase::SubmittingFormulas)
     {
         SubmittedPlayerIndices.Add(SenderIndex);
-        PendingFormulaSubmissions.Add(SenderIndex, FormulaData);
+        FTOGuessAllInputData SanitizedFormulaData = FormulaData;
+        SanitizedFormulaData.SubmittingPlayerIndex = SenderIndex;
+        PendingFormulaSubmissions.Add(SenderIndex, SanitizedFormulaData);
         CheckAllFormulasSubmitted();
     }
     else if (CurrentGamePhase == ETOGamePhase::GuessingCards)
     {
         SubmittedPlayerIndices.Add(SenderIndex);
-        PendingGuessSubmissions.Add(SenderIndex, SingleGuessData);
+        FTOGuessSingleInputData SanitizedSingleData = SingleGuessData;
+        SanitizedSingleData.SubmittingPlayerIndex = SenderIndex;
+        PendingGuessSubmissions.Add(SenderIndex, SanitizedSingleData);
         CheckAllFormulasSubmitted();
     }
 }
@@ -268,9 +272,14 @@ void ATOGameMode::ProcessAllFormulaSubmissions()
 
     for (const auto& Pair : PendingFormulaSubmissions)
     {
-        if (UTOFormula::VerifyAllAnswerWithMap(CurrentServerCardData, Pair.Value))
+        int32 SubmitterPlayerIndex = Pair.Key;
+        const TArray<FString>& Revealed = PlayerRevealedAlphabets.Contains(SubmitterPlayerIndex)
+            ? PlayerRevealedAlphabets[SubmitterPlayerIndex].RevealedAlphabets
+            : TArray<FString>();
+
+        if (UTOFormula::VerifyAllAnswerWithMap(CurrentServerCardData, Pair.Value, Revealed))
         {
-            WinnersThisRound.Add(Pair.Key);
+            WinnersThisRound.Add(SubmitterPlayerIndex);
         }
     }
 

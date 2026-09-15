@@ -12,6 +12,7 @@
 #include "../Character/TOCharacter.h"
 #include "TOGameInstance.h"
 #include "Components/Button.h"
+#include "Components/TextBlock.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UObjectIterator.h"
@@ -431,8 +432,9 @@ void ATOPlayerController::Client_OnGameStarted_Implementation()
 			CurrentSubWidget->AddToViewport(0); 
 			CurrentSubWidget->SetVisibility(bIsHUDVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 
-			// 게임 시작 시 기본 페이즈 1(수식 제출)이므로 버튼 및 텍스트 블록 숨김 처리
+			// 게임 시작 시 기본 페이즈 1(수식 제출) 가시성 적용 및 숫자 카드 바인딩
 			UpdateStartGamePhaseVisibility(ETOGamePhase::SubmittingFormulas);
+			SetupNumberCardBindings();
 		}
 	}
 }
@@ -628,9 +630,21 @@ void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)
 {
 	if (!IsLocalController() || !CurrentSubWidget) return;
 
-	// 페이즈 1 (SubmittingFormulas): 안 보이게 (Collapsed)
-	// 페이즈 2 (GuessingCards): 보이게 (Visible)
-	const ESlateVisibility TargetVisibility = (Phase == ETOGamePhase::GuessingCards) ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	// 수식 영역 숫자 맞추는 단계 (SubmittingFormulas): Visible
+	// 플레이어 카드 추측 라운드 (GuessingCards): Not Hit-Testable (HitTestInvisible)
+	ESlateVisibility TargetVisibility = ESlateVisibility::HitTestInvisible;
+	if (Phase == ETOGamePhase::SubmittingFormulas)
+	{
+		TargetVisibility = ESlateVisibility::Visible;
+	}
+	else if (Phase == ETOGamePhase::GuessingCards)
+	{
+		TargetVisibility = ESlateVisibility::HitTestInvisible;
+	}
+	else
+	{
+		TargetVisibility = ESlateVisibility::HitTestInvisible;
+	}
 
 	static const TArray<FName> TargetWidgetNames = {
 		FName(TEXT("Btn_SelectNumber")),
@@ -667,6 +681,9 @@ void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)
 			}
 		}
 	}
+
+	// 페이즈 전환 시 숫자 카드 자동 바인딩 갱신
+	SetupNumberCardBindings();
 }
 
 void ATOPlayerController::SetInGameMainWidgetVisibility(bool bVisible)
@@ -802,7 +819,115 @@ void ATOPlayerController::SetupWaitingGameBindings()
 	}
 }
 
+void ATOPlayerController::SetupNumberCardBindings()
+{
+	if (!CurrentSubWidget || !CurrentSubWidget->WidgetTree) return;
 
+	TArray<UWidget*> AllWidgets;
+	CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
 
+	for (UWidget* Widget : AllWidgets)
+	{
+		UUserWidget* UserWidget = Cast<UUserWidget>(Widget);
+		if (UserWidget && UserWidget->GetClass()->GetName().Contains(TEXT("NumberCard")))
+		{
+			// 1. WBP_NumberCard의 OnNumberSelected 델리게이트 바인딩
+			if (FMulticastInlineDelegateProperty* DelProp = CastField<FMulticastInlineDelegateProperty>(UserWidget->GetClass()->FindPropertyByName(FName(TEXT("OnNumberSelected")))))
+			{
+				FMulticastScriptDelegate* ScriptDel = DelProp->GetPropertyValuePtr_InContainer(UserWidget);
+				if (ScriptDel)
+				{
+					FScriptDelegate Delegate;
+					Delegate.BindUFunction(this, FName(TEXT("OnCardNumberSelected")));
+					ScriptDel->AddUnique(Delegate);
+				}
+			}
 
+			// 2. 내부 Button_69 (또는 첫 번째 UButton) 가져오기 및 CardNumber 프로퍼티 매핑
+			int32 CardNum = 0;
+			if (FIntProperty* Prop = CastField<FIntProperty>(UserWidget->GetClass()->FindPropertyByName(FName(TEXT("CardNumber")))))
+			{
+				CardNum = Prop->GetPropertyValue_InContainer(UserWidget);
+			}
 
+			if (UserWidget->WidgetTree)
+			{
+				TArray<UWidget*> CardSubWidgets;
+				UserWidget->WidgetTree->GetAllWidgets(CardSubWidgets);
+				for (UWidget* SubW : CardSubWidgets)
+				{
+					if (UButton* Btn = Cast<UButton>(SubW))
+					{
+						if (!NumberCardButtonMap.Contains(Btn))
+						{
+							NumberCardButtonMap.Add(Btn, CardNum);
+							Btn->OnClicked.RemoveDynamic(this, &ATOPlayerController::OnAnyNumberCardButtonClicked);
+							Btn->OnClicked.AddDynamic(this, &ATOPlayerController::OnAnyNumberCardButtonClicked);
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+
+void ATOPlayerController::OnCardNumberSelected(int32 SelectedNumber)
+{
+	if (!CurrentSubWidget) return;
+
+	// WBP_StartGame의 NumberTXT 텍스트 즉시 갱신
+	if (UTextBlock* NumberTXT = Cast<UTextBlock>(CurrentSubWidget->GetWidgetFromName(FName(TEXT("NumberTXT")))))
+	{
+		NumberTXT->SetText(FText::AsNumber(SelectedNumber));
+	}
+
+	// SelectedSingleNumber 프로퍼티가 있으면 갱신
+	if (FIntProperty* SelProp = CastField<FIntProperty>(CurrentSubWidget->GetClass()->FindPropertyByName(FName(TEXT("SelectedSingleNumber")))))
+	{
+		SelProp->SetPropertyValue_InContainer(CurrentSubWidget, SelectedNumber);
+	}
+
+	// WBP_StartGame의 SelectNumber 함수가 있으면 호출하여 내부 이벤트 처리
+	if (UFunction* SelectNumberFunc = CurrentSubWidget->FindFunction(FName(TEXT("SelectNumber"))))
+	{
+		struct FSelectNumberParams { int32 SelectedNumber; };
+		FSelectNumberParams Params;
+		Params.SelectedNumber = SelectedNumber;
+		CurrentSubWidget->ProcessEvent(SelectNumberFunc, &Params);
+	}
+}
+
+void ATOPlayerController::OnAnyNumberCardButtonClicked()
+{
+	if (!CurrentSubWidget) return;
+
+	int32 ClickedCardNum = -1;
+	for (auto& Pair : NumberCardButtonMap)
+	{
+		UButton* Btn = Pair.Key.Get();
+		if (Btn && (Btn->IsHovered() || Btn->IsPressed()))
+		{
+			ClickedCardNum = Pair.Value;
+			break;
+		}
+	}
+
+	if (ClickedCardNum < 0)
+	{
+		for (auto& Pair : NumberCardButtonMap)
+		{
+			UButton* Btn = Pair.Key.Get();
+			if (Btn && Btn->GetCachedWidget().IsValid() && Btn->GetCachedWidget()->IsHovered())
+			{
+				ClickedCardNum = Pair.Value;
+				break;
+			}
+		}
+	}
+
+	if (ClickedCardNum >= 0)
+	{
+		OnCardNumberSelected(ClickedCardNum);
+	}
+}

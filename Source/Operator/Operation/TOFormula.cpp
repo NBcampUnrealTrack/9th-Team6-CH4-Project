@@ -107,19 +107,25 @@ int32 UTOFormula::EvaluateFormula(const TArray<int32>& Numbers, const TArray<ETO
 
 
 
-// 전체 정답 검증 
-bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const FTOGuessAllInputData& InputData)
+// 전체 정답 검증 (이미 공개된 알파벳 슬롯은 검증 통과 처리)
+bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const FTOGuessAllInputData& InputData, const TArray<FString>& RevealedAlphabets)
 {
     // 서버가 가진 실제 카드 정답 순회
     for (const FTOPlayerCardData& RealCard : FormulaData.PlayerCards)
     {
-        // 제출자 본인의 카드는 검증 대상에서 제외
+        // 1. 제출자 본인의 카드는 검증 대상에서 제외
         if (RealCard.PlayerIndex == InputData.SubmittingPlayerIndex)
         {
             continue;
         }
 
-        // 제출한 TArray에서 해당 알파벳에 매칭되는 입력값 찾기
+        // 2. 이미 유추 성공하여 공개된 알파벳(Slot으로 변환된 카드)은 이미 정답이 확인되었으므로 통과
+        if (RevealedAlphabets.Contains(RealCard.PlayerAlphabet))
+        {
+            continue;
+        }
+
+        // 3. 아직 공개되지 않은 알파벳의 경우: 제출한 입력값에서 일치하는지 확인
         const FTOGuessedPair* FoundPair = InputData.GuessedPlayerValues.FindByPredicate(
             [&RealCard](const FTOGuessedPair& Pair)
             {
@@ -133,7 +139,7 @@ bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const
         }
     }
 
-    return true; // 모두 일치하면 정답
+    return true; // 모두 일치하거나 모든 알파벳이 이미 밝혀진 경우(알파벳 없으면) 정답/승리!
 }
 
 

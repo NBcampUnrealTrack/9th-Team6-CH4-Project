@@ -159,6 +159,16 @@ protected:
 	void OnSettingsButtonClicked();
 
 	void SetupWaitingGameBindings();
+	void SetupNumberCardBindings();
+
+	UFUNCTION()
+	void OnCardNumberSelected(int32 SelectedNumber);
+
+	UFUNCTION()
+	void OnAnyNumberCardButtonClicked();
+
+	UPROPERTY()
+	TMap<TWeakObjectPtr<class UButton>, int32> NumberCardButtonMap;
 	
 	// ------------------- UI - Class & Instance 파트 -----------------------------
 protected:
