@@ -8,15 +8,6 @@
 class UTOCardDeckComponent;
 class ATOPlayerController;
 
-// 게임 진행 페이즈 정의
-UENUM(BlueprintType)
-enum class ETOGamePhase : uint8
-{
-    WaitingToStart,     // 대기 중
-    SubmittingFormulas, // Phase 1: 수식 조합 및 제출 단계
-    GuessingCards,      // Phase 2: 타인 카드 유추 단계
-    RoundOver           // 라운드 종료 / 점수 정산
-};
 
 
 UCLASS()
