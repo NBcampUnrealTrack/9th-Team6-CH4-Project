@@ -290,7 +290,7 @@ void ATOPlayerController::Multicast_ShowCorrectNotice_Implementation(int32 Winne
 	}
 	else if (IsLocalController())
 	{
-		K2_ShowCorrectNotice(WinnerPlayerIndex);
+		Client_ShowCorrectNotice(WinnerPlayerIndex);
 	}
 }
 
@@ -299,6 +299,53 @@ void ATOPlayerController::Client_ShowCorrectNotice_Implementation(int32 WinnerPl
 	if (IsLocalController())
 	{
 		K2_ShowCorrectNotice(WinnerPlayerIndex);
+
+		const FString WinnerNickname = GetPlayerNicknameByIndex(WinnerPlayerIndex);
+
+		auto UpdateNoticeWidgetNickname = [this, WinnerNickname]()
+		{
+			for (TObjectIterator<UUserWidget> It; It; ++It)
+			{
+				UUserWidget* Widget = *It;
+				if (Widget && Widget->GetWorld() == GetWorld())
+				{
+					const FString WName = Widget->GetName();
+					const FString CName = Widget->GetClass()->GetName();
+					if (WName.Contains(TEXT("CorrectAnswerNotice")) || CName.Contains(TEXT("CorrectAnswerNotice")))
+					{
+						if (UTextBlock* TB = Cast<UTextBlock>(Widget->GetWidgetFromName(FName(TEXT("TB_PlayerName")))))
+						{
+							TB->SetText(FText::FromString(WinnerNickname));
+						}
+						else if (Widget->WidgetTree)
+						{
+							TArray<UWidget*> AllWidgets;
+							Widget->WidgetTree->GetAllWidgets(AllWidgets);
+							for (UWidget* W : AllWidgets)
+							{
+								if (UTextBlock* TextW = Cast<UTextBlock>(W))
+								{
+									if (TextW->GetName().Equals(TEXT("TB_PlayerName"), ESearchCase::IgnoreCase))
+									{
+										TextW->SetText(FText::FromString(WinnerNickname));
+										break;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		};
+
+		// 1) 즉시 반영
+		UpdateNoticeWidgetNickname();
+
+		// 2) 다음 틱에도 한 번 더 반영 (위젯 초기화 지연 방지)
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda(UpdateNoticeWidgetNickname));
+		}
 	}
 }
 
@@ -630,23 +677,23 @@ void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)
 {
 	if (!IsLocalController() || !CurrentSubWidget) return;
 
-	// 수식 영역 숫자 맞추는 단계 (SubmittingFormulas): Visible
-	// 플레이어 카드 추측 라운드 (GuessingCards): Not Hit-Testable (HitTestInvisible)
-	ESlateVisibility TargetVisibility = ESlateVisibility::HitTestInvisible;
-	if (Phase == ETOGamePhase::SubmittingFormulas)
-	{
-		TargetVisibility = ESlateVisibility::Visible;
-	}
-	else if (Phase == ETOGamePhase::GuessingCards)
-	{
-		TargetVisibility = ESlateVisibility::HitTestInvisible;
-	}
-	else
-	{
-		TargetVisibility = ESlateVisibility::HitTestInvisible;
-	}
+	// Phase 1: SubmittingFormulas (정답 제출 턴 / 수식 영역 맞추기)
+	// - Btn_SelectPlayer, Btn_SelectNumber, TextBlock_5: 비활성화 (Collapsed)
+	// - FormulaBox: 활성화 (Visible, 버튼 인터랙션 가능)
+	// - Btn_FormulaAreaClose: Visible, Btn_FormulaAreaOpen: Collapsed
+	// - TargetPlayerArea: Collapsed
+	//
+	// Phase 2: GuessingCards (단일 카드 / 플레이어 카드 추측 라운드)
+	// - Btn_SelectPlayer, Btn_SelectNumber, TextBlock_5: 활성화 (Visible, 정상 활성화 및 클릭 가능)
+	// - FormulaBox: 출력은 되지만 버튼의 기능은 비활성화 상태 (HitTestInvisible, 연산식 확인 용)
+	// - Btn_FormulaAreaClose: Collapsed, Btn_FormulaAreaOpen: Collapsed
 
-	static const TArray<FName> TargetWidgetNames = {
+	const bool bIsGuessingPhase = (Phase == ETOGamePhase::GuessingCards);
+
+	const ESlateVisibility SelectButtonsVisibility = bIsGuessingPhase ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	const ESlateVisibility FormulaBoxVisibility = bIsGuessingPhase ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Visible;
+
+	static const TArray<FName> SelectWidgetNames = {
 		FName(TEXT("Btn_SelectNumber")),
 		FName(TEXT("Btn_SelectPlayer")),
 		FName(TEXT("TextBlock_5")),
@@ -654,11 +701,36 @@ void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)
 		FName(TEXT("TextBlock5"))
 	};
 
-	for (const FName& WidgetName : TargetWidgetNames)
+	for (const FName& WidgetName : SelectWidgetNames)
 	{
 		if (UWidget* FoundWidget = CurrentSubWidget->GetWidgetFromName(WidgetName))
 		{
-			FoundWidget->SetVisibility(TargetVisibility);
+			FoundWidget->SetVisibility(SelectButtonsVisibility);
+		}
+	}
+
+	if (UWidget* FormulaArea = CurrentSubWidget->GetWidgetFromName(FName(TEXT("FormulaArea"))))
+	{
+		FormulaArea->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	}
+	if (UWidget* FormulaBox = CurrentSubWidget->GetWidgetFromName(FName(TEXT("FormulaBox"))))
+	{
+		FormulaBox->SetVisibility(FormulaBoxVisibility);
+	}
+	if (UWidget* BtnClose = CurrentSubWidget->GetWidgetFromName(FName(TEXT("Btn_FormulaAreaClose"))))
+	{
+		BtnClose->SetVisibility(bIsGuessingPhase ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+	if (UWidget* BtnOpen = CurrentSubWidget->GetWidgetFromName(FName(TEXT("Btn_FormulaAreaOpen"))))
+	{
+		BtnOpen->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (!bIsGuessingPhase)
+	{
+		if (UWidget* TargetPlayerArea = CurrentSubWidget->GetWidgetFromName(FName(TEXT("TargetPlayerArea"))))
+		{
+			TargetPlayerArea->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
 
@@ -668,22 +740,76 @@ void ATOPlayerController::UpdateStartGamePhaseVisibility(ETOGamePhase Phase)
 		CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
 		for (UWidget* W : AllWidgets)
 		{
-			if (W)
+			if (!W) continue;
+			const FString WName = W->GetName();
+			if (WName.Equals(TEXT("Btn_SelectNumber"), ESearchCase::IgnoreCase) ||
+				WName.Equals(TEXT("Btn_SelectPlayer"), ESearchCase::IgnoreCase) ||
+				WName.Equals(TEXT("TextBlock_5"), ESearchCase::IgnoreCase) ||
+				WName.Equals(TEXT("TextBlock5"), ESearchCase::IgnoreCase))
 			{
-				const FString WName = W->GetName();
-				if (WName.Equals(TEXT("Btn_SelectNumber"), ESearchCase::IgnoreCase) ||
-					WName.Equals(TEXT("Btn_SelectPlayer"), ESearchCase::IgnoreCase) ||
-					WName.Equals(TEXT("TextBlock_5"), ESearchCase::IgnoreCase) ||
-					WName.Equals(TEXT("TextBlock5"), ESearchCase::IgnoreCase))
-				{
-					W->SetVisibility(TargetVisibility);
-				}
+				W->SetVisibility(SelectButtonsVisibility);
+			}
+			else if (WName.Equals(TEXT("FormulaArea"), ESearchCase::IgnoreCase))
+			{
+				W->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+			}
+			else if (WName.Equals(TEXT("FormulaBox"), ESearchCase::IgnoreCase))
+			{
+				W->SetVisibility(FormulaBoxVisibility);
+			}
+			else if (WName.Equals(TEXT("Btn_FormulaAreaClose"), ESearchCase::IgnoreCase))
+			{
+				W->SetVisibility(bIsGuessingPhase ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+			}
+			else if (WName.Equals(TEXT("Btn_FormulaAreaOpen"), ESearchCase::IgnoreCase))
+			{
+				W->SetVisibility(ESlateVisibility::Collapsed);
 			}
 		}
 	}
 
 	// 페이즈 전환 시 숫자 카드 자동 바인딩 갱신
 	SetupNumberCardBindings();
+}
+
+FString ATOPlayerController::GetPlayerNicknameByIndex(int32 PlayerIndex) const
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (AGameStateBase* GS = World->GetGameState())
+		{
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (ATOPlayerState* TOPS = Cast<ATOPlayerState>(PS))
+				{
+					if (TOPS->GetAssignedPlayerIndex() == PlayerIndex)
+					{
+						const FString Nick = TOPS->GetCustomPlayerName();
+						if (!Nick.IsEmpty())
+						{
+							return Nick;
+						}
+						return TOPS->GetPlayerName();
+					}
+				}
+			}
+
+			if (GS->PlayerArray.IsValidIndex(PlayerIndex))
+			{
+				if (ATOPlayerState* TOPS = Cast<ATOPlayerState>(GS->PlayerArray[PlayerIndex]))
+				{
+					const FString Nick = TOPS->GetCustomPlayerName();
+					if (!Nick.IsEmpty())
+					{
+						return Nick;
+					}
+					return TOPS->GetPlayerName();
+				}
+			}
+		}
+	}
+
+	return FString::Printf(TEXT("Player %d"), PlayerIndex + 1);
 }
 
 void ATOPlayerController::SetInGameMainWidgetVisibility(bool bVisible)
@@ -877,7 +1003,24 @@ void ATOPlayerController::OnCardNumberSelected(int32 SelectedNumber)
 	if (!CurrentSubWidget) return;
 
 	// WBP_StartGame의 NumberTXT 텍스트 즉시 갱신
-	if (UTextBlock* NumberTXT = Cast<UTextBlock>(CurrentSubWidget->GetWidgetFromName(FName(TEXT("NumberTXT")))))
+	UTextBlock* NumberTXT = Cast<UTextBlock>(CurrentSubWidget->GetWidgetFromName(FName(TEXT("NumberTXT"))));
+	if (!NumberTXT && CurrentSubWidget->WidgetTree)
+	{
+		TArray<UWidget*> AllWidgets;
+		CurrentSubWidget->WidgetTree->GetAllWidgets(AllWidgets);
+		for (UWidget* W : AllWidgets)
+		{
+			if (UTextBlock* TB = Cast<UTextBlock>(W))
+			{
+				if (TB->GetName().Equals(TEXT("NumberTXT"), ESearchCase::IgnoreCase))
+				{
+					NumberTXT = TB;
+					break;
+				}
+			}
+		}
+	}
+	if (NumberTXT)
 	{
 		NumberTXT->SetText(FText::AsNumber(SelectedNumber));
 	}

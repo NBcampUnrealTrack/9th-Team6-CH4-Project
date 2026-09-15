@@ -141,6 +141,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "TO|UI")
 	void UpdateStartGamePhaseVisibility(ETOGamePhase Phase);
 
+	// 플레이어 인덱스로 동기화된 닉네임 조회
+	UFUNCTION(BlueprintPure, Category = "TO|PlayerState")
+	FString GetPlayerNicknameByIndex(int32 PlayerIndex) const;
+
 	// InGameMainWidget 표시/숨김 설정 (환경설정 등 전체화면 팝업 시 유용)
 	UFUNCTION(BlueprintCallable, Category = "TO|UI")
 	void SetInGameMainWidgetVisibility(bool bVisible);

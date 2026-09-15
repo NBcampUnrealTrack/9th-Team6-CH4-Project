@@ -193,10 +193,8 @@ FTOPlayerUIData ATOGameMode::GetUIDataForPlayer(AController* TargetPlayer)
 // 다른 플레이어의 카드 유추 성공 시 알파벳 추가
 void ATOGameMode::AddRevealedAlphabetForPlayer(int32 TargetPlayerIndex, const FString& Alphabet)
 {
-    if (PlayerRevealedAlphabets.Contains(TargetPlayerIndex))
-    {
-       PlayerRevealedAlphabets[TargetPlayerIndex].RevealedAlphabets.AddUnique(Alphabet);
-    }
+    FTODiscoveredCardInfo& Info = PlayerRevealedAlphabets.FindOrAdd(TargetPlayerIndex);
+    Info.RevealedAlphabets.AddUnique(Alphabet);
 }
 
 void ATOGameMode::EndRound(int32 WinnerIndex)
