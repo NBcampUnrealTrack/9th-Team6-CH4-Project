@@ -78,7 +78,7 @@ protected:
 
     // 게임 시작에 필요한 최소 플레이어 수 (테스트 및 실제 인원 조절용, 기본값 2)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameData")
-    int32 MinRequiredPlayers = 4;
+    int32 MinRequiredPlayers = 2;
 
     // 현재 게임 페이즈 상태
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GameData")

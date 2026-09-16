@@ -510,6 +510,9 @@ void ATOGameMode::ResetAllPlayersReadyState()
                 // Ready 플래그를 false(준비 해제)로 변경
                 TOPS->bIsReadyToPlay = false;
             }
+            
+            // 대기실 BGM으로 복귀 명령
+            TOPC->Client_SwitchToWaitingBGM();
         }
     }
 }

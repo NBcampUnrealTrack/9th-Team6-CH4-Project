@@ -35,15 +35,16 @@ public:
 	int32 AssignedPlayerIndex = -1;
 
 	
-	// 게임모드에서 호출해 줄 BGM 전환 함수 (Client RPC)
-	UFUNCTION(Client, Reliable)
-	void Client_SwitchToInGameBGM();
-	
+
 	// --------------------- BGM -------------------------------------------
 	
 	// 대기실 BGM 컴포넌트 레퍼런스
 	UPROPERTY()
 	UAudioComponent* WaitingBGMComponent;
+	
+	// 인게임 BGM 컴포넌트
+	UPROPERTY()
+	UAudioComponent* InGameBGMComponent;
 
 	// 대기실 BGM 에셋
 	UPROPERTY(EditDefaultsOnly, Category = "Sound")
@@ -52,6 +53,14 @@ public:
 	// 인게임 BGM 에셋
 	UPROPERTY(EditDefaultsOnly, Category = "Sound")
 	USoundBase* InGameBGMSound;
+	
+	// 게임모드에서 호출해 줄 BGM 전환 함수 (Client RPC)
+	UFUNCTION(Client, Reliable)
+	void Client_SwitchToInGameBGM();
+	
+	// 인게임에서 다시 대기실 BGM으로 복귀할 때 호출할 함수
+	UFUNCTION(Client, Reliable)
+	void Client_SwitchToWaitingBGM();
 	
 
 	// ------------------- UI - Input Mode & On/Off 파트 -----------------------------

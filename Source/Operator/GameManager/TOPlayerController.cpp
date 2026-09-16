@@ -159,12 +159,42 @@ void ATOPlayerController::Client_SwitchToInGameBGM_Implementation()
 	if (WaitingBGMComponent && WaitingBGMComponent->IsPlaying())
 	{
 		WaitingBGMComponent->Stop();
+		WaitingBGMComponent = nullptr; // 안전하게 초기화
+	}
+	
+	// 2. [핵심] 이미 인게임 BGM이 재생 중이라면 중복 재생 방지 및 정지
+	if (InGameBGMComponent && InGameBGMComponent->IsPlaying())
+	{
+		InGameBGMComponent->Stop();
 	}
 
 	// 2. 인게임 BGM 재생
 	if (InGameBGMSound && IsLocalController())
 	{
-		UGameplayStatics::PlaySound2D(this, InGameBGMSound);
+		// PlaySound2D 대신 SpawnSound2D를 사용해 컴포넌트로 관리합니다.
+		InGameBGMComponent = UGameplayStatics::SpawnSound2D(this, InGameBGMSound);
+	}
+}
+
+void ATOPlayerController::Client_SwitchToWaitingBGM_Implementation()
+{
+	// 1. 인게임 BGM 정지
+	if (InGameBGMComponent && InGameBGMComponent->IsPlaying())
+	{
+		InGameBGMComponent->Stop();
+		InGameBGMComponent = nullptr;
+	}
+
+	// 2. 대기실 BGM이 혹시 켜져있다면 중복 방지를 위해 정지 후 재재생
+	if (WaitingBGMComponent && WaitingBGMComponent->IsPlaying())
+	{
+		WaitingBGMComponent->Stop();
+	}
+
+	// 3. 대기실 BGM 새로 재생 및 컴포넌트 저장
+	if (WaitingBGMSound && IsLocalController())
+	{
+		WaitingBGMComponent = UGameplayStatics::SpawnSound2D(this, WaitingBGMSound);
 	}
 }
 
