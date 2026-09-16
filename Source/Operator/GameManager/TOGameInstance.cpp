@@ -530,25 +530,12 @@ void UTOGameInstance::OnPrivateJoinButtonClicked()
 
     if (!TargetIP.IsEmpty())
     {
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
-                FString::Printf(TEXT("호스트 IP 직접 접속 중: %s"), *TargetIP));
-        }
         UE_LOG(LogTemp, Log, TEXT("[TOGameInstance] Direct IP connection triggered to: %s"), *TargetIP);
         JoinServerByIP(TargetIP);
         return;
     }
 
     // 2. 일반 세션 검색 진행
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 4.f, FColor::Yellow,
-            FString::Printf(TEXT("비공개 방 검색 중... [방: %s, 비번: %s]"), 
-                InputRoomName.IsEmpty() ? TEXT("(전체)") : *InputRoomName,
-                InputPassword.IsEmpty() ? TEXT("(없음)") : *InputPassword));
-    }
-
     FindPrivateRooms(InputPassword, InputRoomName);
 }
 
@@ -736,20 +723,6 @@ void UTOGameInstance::OnCreateSessionComplete(
             *SessionName.ToString()
         );
 
-        if (GEngine)
-        {
-            if (IsUsingSteamSubsystem())
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Green,
-                    FString::Printf(TEXT("방 생성 성공! [스팀 로비 개설 완료: '%s']"), *RoomName));
-            }
-            else
-            {
-                FString HostIP = GetBestHostIP();
-                GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Green,
-                    FString::Printf(TEXT("방 생성 성공! [호스트 IP: %s:7777]"), HostIP.IsEmpty() ? TEXT("Local") : *HostIP));
-            }
-        }
 
         UWorld* World = GetWorld();
 
@@ -844,12 +817,6 @@ void UTOGameInstance::OnJoinSessionComplete(
 
         if (!ConnectAddress.IsEmpty())
         {
-            if (GEngine)
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan,
-                    FString::Printf(TEXT("서버로 이동 중: %s"), *ConnectAddress));
-            }
-
             if (APlayerController* PC = GetFirstLocalPlayerController())
             {
                 FString TravelURL = ConnectAddress;
@@ -871,10 +838,6 @@ void UTOGameInstance::OnJoinSessionComplete(
         else
         {
             UE_LOG(LogTemp, Warning, TEXT("[TOGameInstance] ConnectAddress is empty!"));
-            if (GEngine)
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("서버 접속 주소를 가져오지 못했습니다."));
-            }
         }
     }
     else
@@ -907,12 +870,6 @@ void UTOGameInstance::OnJoinSessionComplete(
             *Reason,
             (int32)Result
         );
-
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red,
-                FString::Printf(TEXT("세션 참가 실패! 사유: %s"), *Reason));
-        }
     }
 }
 
@@ -965,11 +922,6 @@ void UTOGameInstance::FindRooms()
     }
 
     UE_LOG(LogTemp, Log, TEXT("Searching for Public Sessions (Steam: %s)..."), bIsSteam ? TEXT("Yes") : TEXT("No"));
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 4.f, FColor::Yellow, 
-            bIsSteam ? TEXT("스팀 공개 방 목록 검색 중...") : TEXT("공개 방 목록 검색 중..."));
-    }
 
     SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
 }
@@ -1028,12 +980,6 @@ void UTOGameInstance::FindPrivateRooms(const FString& SearchPassword, const FStr
     UE_LOG(LogTemp, Log, TEXT("Searching for Private Sessions (Target Room: '%s', Pass: '%s', Steam: %s)..."),
         *TargetRoomName, *TargetPassword, bIsSteam ? TEXT("Yes") : TEXT("No"));
 
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 4.f, FColor::Yellow, 
-            bIsSteam ? TEXT("스팀 비공개 방 검색 중...") : TEXT("비공개 방 검색 중..."));
-    }
-
     SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
 }
 
@@ -1071,48 +1017,6 @@ void UTOGameInstance::OnFindSessionsComplete(
         if (bIsSearchingPrivate)
         {
             bIsSearchingPrivate = false;
-            if (GEngine)
-            {
-                if (bIsSteam)
-                {
-                    GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, 
-                        TEXT("일치하는 비공개 방을 찾지 못했습니다.\n호스트가 방을 개설했는지 또는 비밀번호를 다시 확인해주세요."));
-                }
-                else
-                {
-                    GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, 
-                        TEXT("방을 찾지 못했습니다.\n[하마치 이용 시] '방 이름' 칸에 호스트의 하마치 IP(25.x.x.x)를 입력하면 즉시 접속됩니다!"));
-                }
-            }
-        }
-        else
-        {
-            if (GEngine)
-            {
-                if (bIsSteam)
-                {
-                    GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Yellow, 
-                        TEXT("스팀에서 열려 있는 방을 발견하지 못했습니다. (0개 발견)\n호스트가 방을 개설했는지 확인해주세요."));
-                }
-                else
-                {
-                    FString SavedIP;
-                    if (GConfig)
-                    {
-                        GConfig->GetString(TEXT("Operator"), TEXT("LastHostIP"), SavedIP, GGameIni);
-                    }
-                    if (!SavedIP.IsEmpty())
-                    {
-                        GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Yellow, 
-                            FString::Printf(TEXT("하마치 특성으로 자동 탐색 0개 발견\n목록에 [최근 호스트 IP: %s] 가 등록되었습니다. 참가 버튼을 누르면 즉시 입장됩니다!"), *SavedIP));
-                    }
-                    else
-                    {
-                        GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Yellow, 
-                            TEXT("네트워크에서 방을 발견하지 못했습니다. (0개 발견)\n[하마치 안내] 하마치는 브로드캐스트를 차단하므로 [비공개 방 찾기]에서 호스트 IP(25.x.x.x)로 접속해주세요!"));
-                    }
-                }
-            }
         }
 
         OnRoomsFound.Broadcast();
@@ -1248,10 +1152,6 @@ void UTOGameInstance::OnFindSessionsComplete(
         if (MatchIndex != -1)
         {
             UE_LOG(LogTemp, Log, TEXT("Matching private session found at index %d! Joining..."), MatchIndex);
-            if (GEngine)
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("비공개 방을 찾았습니다! 접속 중..."));
-            }
             JoinFoundSession(MatchIndex);
             return;
         }
@@ -1259,19 +1159,6 @@ void UTOGameInstance::OnFindSessionsComplete(
         {
             UE_LOG(LogTemp, Warning, TEXT("No matching private session found for Room: '%s', Pass: '%s'"),
                 *TargetRoomName, *TargetPassword);
-            if (GEngine)
-            {
-                if (bIsSteam)
-                {
-                    GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, 
-                        TEXT("일치하는 비공개 방을 찾지 못했습니다.\n방 이름 또는 비밀번호를 다시 확인해주세요."));
-                }
-                else
-                {
-                    GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, 
-                        TEXT("일치하는 방을 찾지 못했습니다.\n[하마치 이용 시] '방 이름' 칸에 호스트의 하마치 IP(25.x.x.x)를 입력하면 즉시 접속됩니다!"));
-                }
-            }
             return;
         }
     }
@@ -1307,33 +1194,6 @@ void UTOGameInstance::OnFindSessionsComplete(
         else
         {
             PublicCount++;
-        }
-    }
-
-    if (GEngine)
-    {
-        if (Results.Num() > 0)
-        {
-            if (PublicCount > 0 && PrivateCount > 0)
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
-                    FString::Printf(TEXT("방 %d개를 찾았습니다! (공개: %d, 비공개: %d)"), Results.Num(), PublicCount, PrivateCount));
-            }
-            else if (PublicCount > 0)
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green,
-                    FString::Printf(TEXT("공개 방 %d개를 찾았습니다!"), PublicCount));
-            }
-            else
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow,
-                    FString::Printf(TEXT("비공개 방 %d개를 찾았습니다! (목록에서 선택하거나 비공개 탭 이용)"), PrivateCount));
-            }
-        }
-        else
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow,
-                TEXT("현재 열려 있는 방이 없습니다."));
         }
     }
 
