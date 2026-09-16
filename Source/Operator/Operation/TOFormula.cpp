@@ -143,7 +143,10 @@ bool UTOFormula::VerifyAllAnswerWithMap(const FTOFormulaData& FormulaData, const
         bool bAllValuesMatchInOrder = true;
         for (int32 i = 0; i < UnrevealedCards.Num(); ++i)
         {
-            if (InputData.GuessedPlayerValues[i].GuessedValue != UnrevealedCards[i]->CardValue)
+            int32 GuessedVal = InputData.GuessedPlayerValues[i].GuessedValue;
+
+            // 사용자가 입력하지 않아 -999(센티널 무효값)로 넘어온 경우 즉시 오답 처리
+            if (GuessedVal == -999 || GuessedVal != UnrevealedCards[i]->CardValue)
             {
                 bAllValuesMatchInOrder = false;
                 break;
